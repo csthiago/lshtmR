@@ -1,0 +1,6 @@
+^.*\.Rproj$
+^\.Rproj\.user$
+^lshtmR\.Rproj$
+^LICENSE\.md$
+^data-raw$
+^\.github$
