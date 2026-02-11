@@ -2,6 +2,7 @@
 
 S3method(print,mh_analysis)
 export(mh_analysis)
+export(strate)
 importFrom(dplyr,.data)
 importFrom(dplyr,across)
 importFrom(dplyr,all_of)
@@ -15,3 +16,4 @@ importFrom(dplyr,summarise)
 importFrom(stats,pchisq)
 importFrom(stats,qnorm)
 importFrom(tidyr,pivot_wider)
+importFrom(utils,head)

@@ -27,13 +27,13 @@
 #' str(lung_cancer_cc)
 #'
 #' # Calculate stratified odds ratio by age group
-#' mh_or(lung_cancer_cc, "smoking", "case", "age_group")
+#' mh_analysis(lung_cancer_cc, "smoking", "case", strata = "age_group", measure = "or")
 #'
 #' # Calculate stratified odds ratio by sex
-#' mh_or(lung_cancer_cc, "smoking", "case", "sex")
+#' mh_analysis(lung_cancer_cc, "smoking", "case", strata = "sex", measure = "or")
 #'
 #' # Stratify by both age group and sex
-#' mh_or(lung_cancer_cc, "smoking", "case", c("age_group", "sex"))
+#' mh_analysis(lung_cancer_cc, "smoking", "case", strata = c("age_group", "sex"), measure = "or")
 #'
 "lung_cancer_cc"
 
@@ -68,13 +68,15 @@
 #' # View structure
 #' str(mortality_cohort)
 #'
-#' # Calculate crude rate ratio (no stratification
-#' stmh_r(mortality_cohort, "death", "treatment", "person_years")
+#' # Calculate crude rate ratio (no stratification)
+#' mh_analysis(mortality_cohort, "treatment", "death", time = "person_years", measure = "irr")
 #'
 #' # Calculate stratified rate ratio by severity
-#' stmh_r(mortality_cohort, "death", "treatment", "person_years", strata = "severity")
+#' mh_analysis(mortality_cohort, "treatment", "death", time = "person_years",
+#'             strata = "severity", measure = "irr")
 #'
 #' # Calculate stratified rate ratio by age category
-#' stmh_r(mortality_cohort, "death", "treatment", "person_years", strata = "age_cat")
+#' mh_analysis(mortality_cohort, "treatment", "death", time = "person_years",
+#'             strata = "age_cat", measure = "irr")
 #'
 "mortality_cohort"

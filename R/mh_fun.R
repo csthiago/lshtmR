@@ -15,7 +15,168 @@ format_pvalue <- function(p) {
   }
 }
 
-#' Mantel-Haenszel Odds Ratio
+
+#' Calculate Incidence Rates with Confidence Intervals
+#'
+#' Calculates incidence rates with confidence intervals for cohort or follow-up data.
+#' Can compute overall rates or rates stratified by one or more grouping variables.
+#' Uses the Stata strate method where SE(ln(rate)) = 1/sqrt(D).
+#'
+#' @param data A data frame containing the variables for analysis.
+#' @param event Character string specifying the name of the event/case count variable.
+#'   Should contain numeric values representing the number of events (typically 0 or 1
+#'   for individual-level data, or counts for aggregated data).
+#' @param time Character string specifying the name of the person-time variable.
+#'   Should contain numeric values representing the follow-up time (e.g., person-years).
+#' @param strata Character string or vector specifying the stratification variable(s).
+#'   If \code{NULL} (the default), calculates the overall rate.
+#' @param per Numeric value specifying the multiplier for rate display.
+#'   Default is 1000 (rates per 1000 person-time units).
+#' @param conf.level Numeric value between 0 and 1 specifying the confidence level
+#'   for the confidence interval. Default is 0.95 (95% CI).
+#'
+#' @return Invisibly returns a data frame with the following columns:
+#' \describe{
+#'   \item{stratum}{Stratum identifier (if stratified).}
+#'   \item{events}{Number of events.}
+#'   \item{person_time}{Total person-time at risk.}
+#'   \item{rate}{Incidence rate (per specified multiplier).}
+#'   \item{ci_lower}{Lower bound of the confidence interval.}
+#'   \item{ci_upper}{Upper bound of the confidence interval.}
+#' }
+#'
+#' @details
+#' The confidence interval is calculated using the method from Stata's strate command:
+#' \itemize{
+#'   \item SE(ln(rate)) = 1/sqrt(D) where D is the number of events
+#'   \item CI = exp(ln(rate) ± z * SE(ln(rate)))
+#' }
+#'
+#' This method produces confidence intervals that are always positive and have good
+#' coverage properties, especially when the number of events is small.
+#'
+#' @seealso \code{\link{mh_analysis}} for rate ratio comparisons between groups.
+#'
+#' @examples
+#' # Using the included mortality cohort dataset
+#' data(mortality_cohort)
+#'
+#' # Calculate overall mortality rate
+#' strate(mortality_cohort, "death", "person_years")
+#'
+#' # Calculate rates by treatment group
+#' strate(mortality_cohort, "death", "person_years", strata = "treatment")
+#'
+#' # Calculate rates by severity
+#' strate(mortality_cohort, "death", "person_years", strata = "severity")
+#'
+#' # Calculate rates per 100,000 person-years
+#' strate(mortality_cohort, "death", "person_years", per = 100000)
+#'
+#' # Calculate rates stratified by multiple variables
+#' strate(mortality_cohort, "death", "person_years", strata = c("treatment", "severity"))
+#'
+#' @export
+strate <- function(data, event, time, strata = NULL, per = 1000, conf.level = 0.95) {
+
+  # Check required variables exist
+  required_vars <- c(event, time)
+  if (!is.null(strata)) required_vars <- c(required_vars, strata)
+
+  if (!all(required_vars %in% names(data))) {
+    stop("One or more variables not found in data")
+  }
+
+  alpha <- 1 - conf.level
+  z <- qnorm(1 - alpha/2)
+
+  # Create grouping variable
+
+  if (is.null(strata)) {
+    data$.stratum <- "Overall"
+    group_vars <- ".stratum"
+  } else {
+    group_vars <- strata
+  }
+
+  # Aggregate by strata
+  result <- data |>
+    group_by(across(all_of(group_vars))) |>
+    summarise(
+      events = sum(.data[[event]], na.rm = TRUE),
+      person_time = sum(.data[[time]], na.rm = TRUE),
+      .groups = "drop"
+    ) |>
+    mutate(
+      rate = events / person_time,
+      se_ln_rate = ifelse(events > 0, 1 / sqrt(events), NA),
+      ci_lower = ifelse(events > 0, exp(log(rate) - z * se_ln_rate), NA),
+      ci_upper = ifelse(events > 0, exp(log(rate) + z * se_ln_rate), NA),
+      # Scale to per multiplier
+      rate_scaled = rate * per,
+      ci_lower_scaled = ci_lower * per,
+      ci_upper_scaled = ci_upper * per
+    )
+
+  # Output
+  cat("\n")
+  cat("Incidence Rates\n")
+  cat("===============\n")
+  cat("Event:", event, "\n")
+  cat("Person-time:", time, "\n")
+  if (!is.null(strata)) {
+    cat("Stratified by:", paste(strata, collapse = ", "), "\n")
+  }
+  cat("Confidence level:", conf.level * 100, "%\n")
+  cat("Rate per:", format(per, big.mark = ","), "\n")
+  cat("\n")
+
+  # Prepare output table
+  if (is.null(strata)) {
+    output_table <- result |>
+      select(events, person_time, rate_scaled, ci_lower_scaled, ci_upper_scaled) |>
+      mutate(
+        person_time = round(person_time, 1),
+        across(c(rate_scaled, ci_lower_scaled, ci_upper_scaled), \(x) round(x, 4))
+      )
+    names(output_table) <- c("Events", "Person-time",
+                             paste0("Rate/", format(per, big.mark = ",")),
+                             "CI lower", "CI upper")
+  } else {
+    output_table <- result |>
+      select(all_of(group_vars), events, person_time, rate_scaled, ci_lower_scaled, ci_upper_scaled) |>
+      mutate(
+        person_time = round(person_time, 1),
+        across(c(rate_scaled, ci_lower_scaled, ci_upper_scaled), \(x) round(x, 4))
+      )
+    rate_col_name <- paste0("Rate/", format(per, big.mark = ","))
+    names(output_table) <- c(strata, "Events", "Person-time", rate_col_name, "CI lower", "CI upper")
+  }
+
+  print(as.data.frame(output_table), row.names = FALSE)
+
+  # Calculate totals
+  total_events <- sum(result$events)
+  total_pt <- sum(result$person_time)
+  total_rate <- total_events / total_pt
+  total_se_ln <- ifelse(total_events > 0, 1 / sqrt(total_events), NA)
+  total_ci_lower <- ifelse(total_events > 0, exp(log(total_rate) - z * total_se_ln) * per, NA)
+  total_ci_upper <- ifelse(total_events > 0, exp(log(total_rate) + z * total_se_ln) * per, NA)
+
+  if (!is.null(strata)) {
+    cat("\n")
+    cat("Total:", total_events, "events,", round(total_pt, 1), "person-time\n")
+    cat("Overall rate:", round(total_rate * per, 4), "per", format(per, big.mark = ","), "\n")
+    cat(conf.level * 100, "% CI: ", round(total_ci_lower, 4), " - ", round(total_ci_upper, 4), "\n", sep = "")
+  }
+
+  # Return data frame invisibly
+  return_df <- result |>
+    select(all_of(c(if (!is.null(strata)) group_vars else NULL,
+                    "events", "person_time", "rate", "ci_lower", "ci_upper")))
+
+  invisible(return_df)
+}
 #'
 #' Calculates the Mantel-Haenszel odds ratio for case-control data. For binary
 #' exposures, computes crude or stratified odds ratios with optional pooling.

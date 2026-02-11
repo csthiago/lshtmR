@@ -38,14 +38,16 @@ data(mortality_cohort)
 # View structure
 str(mortality_cohort)
 
-# Calculate crude rate ratio (no stratification
-stmh_r(mortality_cohort, "death", "treatment", "person_years")
+# Calculate crude rate ratio (no stratification)
+mh_analysis(mortality_cohort, "treatment", "death", time = "person_years", measure = "irr")
 
 # Calculate stratified rate ratio by severity
-stmh_r(mortality_cohort, "death", "treatment", "person_years", strata = "severity")
+mh_analysis(mortality_cohort, "treatment", "death", time = "person_years",
+            strata = "severity", measure = "irr")
 
 # Calculate stratified rate ratio by age category
-stmh_r(mortality_cohort, "death", "treatment", "person_years", strata = "age_cat")
+mh_analysis(mortality_cohort, "treatment", "death", time = "person_years",
+            strata = "age_cat", measure = "irr")
 
 }
 \keyword{datasets}
