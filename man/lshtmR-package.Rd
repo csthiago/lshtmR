@@ -4,9 +4,9 @@
 \name{lshtmR-package}
 \alias{lshtmR}
 \alias{lshtmR-package}
-\title{lshtmR: What the Package Does (One Line, Title Case)}
+\title{lshtmR: Mantel-Haenszel procedures for LSHTM classes}
 \description{
-What the package does (one paragraph).
+Mantel-Haenszel for educational purposes.
 }
 \seealso{
 Useful links:
@@ -17,7 +17,7 @@ Useful links:
 
 }
 \author{
-\strong{Maintainer}: Thiago Cerqueira-Silva \email{first.last@example.com}
+\strong{Maintainer}: Thiago Cerqueira-Silva \email{thiago.silva@lshtm.ac.uk}
 
 }
 \keyword{internal}

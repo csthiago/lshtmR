@@ -2,8 +2,6 @@
 
 S3method(print,mh_analysis)
 export(mh_analysis)
-export(mh_or)
-export(stmh_r)
 importFrom(dplyr,.data)
 importFrom(dplyr,across)
 importFrom(dplyr,all_of)

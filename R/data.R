@@ -2,7 +2,6 @@
 #'
 #' A simulated dataset from a case-control study examining the association
 #' between smoking and lung cancer, stratified by age group and sex.
-#' This dataset is designed for demonstrating the \code{\link{mh_or}} function.
 #'
 #' @format A data frame with 500 rows and 5 variables:
 #' \describe{
@@ -43,7 +42,6 @@
 #'
 #' A simulated dataset from a cohort study examining the effect of a treatment
 #' on mortality, stratified by disease severity and age category.
-#' This dataset is designed for demonstrating the \code{\link{stmh_r}} function.
 #'
 #' @format A data frame with 600 rows and 6 variables:
 #' \describe{

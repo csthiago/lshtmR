@@ -23,7 +23,6 @@ lung_cancer_cc
 \description{
 A simulated dataset from a case-control study examining the association
 between smoking and lung cancer, stratified by age group and sex.
-This dataset is designed for demonstrating the \code{\link{mh_or}} function.
 }
 \details{
 The data were simulated with a true odds ratio of approximately 3 for the
