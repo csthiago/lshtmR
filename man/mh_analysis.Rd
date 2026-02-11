@@ -11,7 +11,8 @@ mh_analysis(
   time = NULL,
   strata = NULL,
   measure = c("or", "irr"),
-  conf.level = 0.95
+  conf.level = 0.95,
+  verbose = TRUE
 )
 }
 \arguments{
@@ -35,6 +36,10 @@ odds ratio (default) or \code{"irr"} for incidence rate ratio.}
 
 \item{conf.level}{Numeric value between 0 and 1 specifying the confidence level.
 Default is 0.95 (95\% CI).}
+
+\item{verbose}{Logical. If \code{TRUE} (the default), displays stratum-specific
+estimates when stratification is used. If \code{FALSE}, only shows the pooled
+estimate and summary statistics.}
 }
 \value{
 Invisibly returns an object of class \code{"mh_analysis"} containing:

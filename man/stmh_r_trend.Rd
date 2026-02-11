@@ -4,7 +4,15 @@
 \alias{stmh_r_trend}
 \title{Mantel-Haenszel Trend Test for Rate Ratios (internal)}
 \usage{
-stmh_r_trend(data, event, exposure, time, strata = NULL, conf.level = 0.95)
+stmh_r_trend(
+  data,
+  event,
+  exposure,
+  time,
+  strata = NULL,
+  conf.level = 0.95,
+  verbose = TRUE
+)
 }
 \arguments{
 \item{data}{A data frame.}

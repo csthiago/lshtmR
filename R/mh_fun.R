@@ -198,6 +198,8 @@ strate <- function(data, event, time, strata = NULL, per = 1000, conf.level = 0.
 #'   computes u and v within each stratum and pools across strata.
 #' @param conf.level Numeric value between 0 and 1 specifying the confidence level
 #'   for the confidence interval. Default is 0.95 (95% CI).
+#' @param verbose Logical. If \code{TRUE} (the default), displays stratum-specific
+#'   estimates when stratification is used.
 #'
 #' @return Invisibly returns a list with the following components:
 #' \describe{
@@ -250,7 +252,7 @@ strate <- function(data, event, time, strata = NULL, per = 1000, conf.level = 0.
 #' result$estimate
 #'
 #' @keywords internal
-mh_or <- function(data, exposure, outcome, strata_vars = NULL, conf.level = 0.95) {
+mh_or <- function(data, exposure, outcome, strata_vars = NULL, conf.level = 0.95, verbose = TRUE) {
 
   # Check required variables exist
   required_vars <- c(exposure, outcome)
@@ -287,7 +289,7 @@ mh_or <- function(data, exposure, outcome, strata_vars = NULL, conf.level = 0.95
            "\nConvert to numeric scores (e.g., 1, 2, 3) for trend analysis.")
     }
     # Run trend test for odds ratio
-    return(mh_or_trend(data, exposure, outcome, strata_vars, conf.level))
+    return(mh_or_trend(data, exposure, outcome, strata_vars, conf.level, verbose))
   }
 
   # If no strata, create a dummy stratum
@@ -382,6 +384,7 @@ mh_or <- function(data, exposure, outcome, strata_vars = NULL, conf.level = 0.95
   cat("Mantel-Haenszel Odds Ratio Analysis\n")
   cat("====================================\n")
   cat("Exposure:", exposure, "\n")
+  cat("  comparing", exposure, "=", exp_yes, "vs.", exposure, "=", exp_no, "\n")
   cat("Outcome:", outcome, "\n")
   if (!is.null(strata_vars)) {
     cat("Stratified by:", paste(strata_vars, collapse = ", "), "\n")
@@ -408,17 +411,20 @@ mh_or <- function(data, exposure, outcome, strata_vars = NULL, conf.level = 0.95
   # Stratified output (only if strata provided)
   if (!is.null(strata_vars)) {
 
-    cat("=== Stratum-Specific Odds Ratios ===\n\n")
+    if (verbose) {
+      cat("=== Stratum-Specific Odds Ratios ===\n\n")
 
-    stratum_output <- results |>
-      select(strata, a, b, c, d, or, or_lower, or_upper) |>
-      mutate(
-        across(c(or, or_lower, or_upper), \(x) round(x, 4))
-      )
+      stratum_output <- results |>
+        select(strata, a, b, c, d, or, or_lower, or_upper) |>
+        mutate(
+          across(c(or, or_lower, or_upper), \(x) round(x, 4))
+        )
 
-    print(as.data.frame(stratum_output), row.names = FALSE)
+      print(as.data.frame(stratum_output), row.names = FALSE)
+      cat("\n")
+    }
 
-    cat("\n=== Mantel-Haenszel Pooled Estimate ===\n\n")
+    cat("=== Mantel-Haenszel Pooled Estimate ===\n\n")
     cat("Note:", n_informative, "of", n_total_strata,
         "strata contribute information\n\n")
 
@@ -484,7 +490,7 @@ mh_or <- function(data, exposure, outcome, strata_vars = NULL, conf.level = 0.95
 #'
 #' @return A list with trend test results.
 #' @keywords internal
-mh_or_trend <- function(data, exposure, outcome, strata_vars = NULL, conf.level = 0.95) {
+mh_or_trend <- function(data, exposure, outcome, strata_vars = NULL, conf.level = 0.95, verbose = TRUE) {
 
   alpha <- 1 - conf.level
   z <- qnorm(1 - alpha/2)
@@ -614,21 +620,24 @@ mh_or_trend <- function(data, exposure, outcome, strata_vars = NULL, conf.level 
   print(as.data.frame(freq_output), row.names = FALSE)
 
   if (!is.null(strata_vars)) {
-    cat("\n=== Stratum-Specific Score Statistics ===\n\n")
-    cat("Note:", n_informative, "of", n_total_strata,
-        "strata contribute information\n\n")
+    if (verbose) {
+      cat("\n=== Stratum-Specific Score Statistics ===\n\n")
+      cat("Note:", n_informative, "of", n_total_strata,
+          "strata contribute information\n\n")
 
-    strata_output <- strata_stats |>
-      mutate(
-        or_i = exp(u / v),
-        across(c(u, v, or_i), \(x) round(x, 4))
-      ) |>
-      select(strata, dt, pt, u, v, or_i)
+      strata_output <- strata_stats |>
+        mutate(
+          or_i = exp(u / v),
+          across(c(u, v, or_i), \(x) round(x, 4))
+        ) |>
+        select(strata, dt, pt, u, v, or_i)
 
-    names(strata_output) <- c("Stratum", "Cases", "Total", "u", "v", "OR")
-    print(as.data.frame(strata_output), row.names = FALSE)
+      names(strata_output) <- c("Stratum", "Cases", "Total", "u", "v", "OR")
+      print(as.data.frame(strata_output), row.names = FALSE)
+      cat("\n")
+    }
 
-    cat("\n=== Mantel-Haenszel Pooled Trend Estimate ===\n\n")
+    cat("=== Mantel-Haenszel Pooled Trend Estimate ===\n\n")
   } else {
     cat("\n=== Mantel-Haenszel Trend Estimate ===\n\n")
   }
@@ -736,7 +745,7 @@ mh_or_trend <- function(data, exposure, outcome, strata_vars = NULL, conf.level 
 #' strat_result$estimate
 #'
 #' @keywords internal
-stmh_r <- function(data, event, exposure, time, strata = NULL, conf.level = 0.95) {
+stmh_r <- function(data, event, exposure, time, strata = NULL, conf.level = 0.95, verbose = TRUE) {
 
   # Check required variables exist
   required_vars <- c(event, exposure, time)
@@ -769,17 +778,29 @@ stmh_r <- function(data, event, exposure, time, strata = NULL, conf.level = 0.95
            "\nConvert to numeric scores (e.g., 1, 2, 3) for trend analysis.")
     }
     # Run trend test
-    return(stmh_r_trend(data, event, exposure, time, strata, conf.level))
+    return(stmh_r_trend(data, event, exposure, time, strata, conf.level, verbose))
   }
 
+  # Detect event coding
+
+  event_values <- sort(unique(data[[event]]))
+  event_yes <- event_values[length(event_values)]  # highest value = event
+  event_no <- event_values[1]                       # lowest value = no event
+
   # Binary exposure: check if coded as 0/1
+  exp_levels <- sort(exp_values)
+  exp_yes <- exp_levels[2]  # Store original labels before recoding
+ exp_no <- exp_levels[1]
+
   if (!all(exp_values %in% c(0, 1))) {
     # Convert to 0/1
-    exp_levels <- sort(exp_values)
     data[[exposure]] <- as.integer(data[[exposure]] == exp_levels[2])
-    message("Exposure '", exposure, "' recoded: ", exp_levels[1], " = 0 (unexposed), ",
-            exp_levels[2], " = 1 (exposed)")
   }
+
+  # Print variable coding
+  cat("Variable coding detected:\n")
+  cat("  Exposure:", exposure, "-> Exposed =", exp_yes, ", Unexposed =", exp_no, "\n")
+  cat("  Event:", event, "-> Event =", event_yes, ", No event =", event_no, "\n\n")
 
   # If no strata, create a dummy stratum
   if (is.null(strata)) {
@@ -847,6 +868,7 @@ stmh_r <- function(data, event, exposure, time, strata = NULL, conf.level = 0.95
   cat("====================================\n")
   cat("Event:", event, "\n")
   cat("Exposure:", exposure, "\n")
+  cat("  comparing", exposure, "=", exp_yes, "vs.", exposure, "=", exp_no, "\n")
   if (!is.null(strata)) {
     cat("Stratified by:", strata, "\n")
   }
@@ -875,7 +897,7 @@ stmh_r <- function(data, event, exposure, time, strata = NULL, conf.level = 0.95
 
   cat("=== Exposure-Specific Rates ===\n\n")
   rate_table <- data.frame(
-    Exposure = c(0, 1),
+    Exposure = c(exp_no, exp_yes),
     Events = c(total_d0, total_d1),
     `Person-time` = round(c(total_py0, total_py1), 1),
     Rate = round(c(rate0, rate1), 4),
@@ -883,24 +905,28 @@ stmh_r <- function(data, event, exposure, time, strata = NULL, conf.level = 0.95
     `CI upper` = round(c(rate0_ci_upper, rate1_ci_upper), 4),
     check.names = FALSE
   )
+  names(rate_table)[1] <- exposure
   print(rate_table, row.names = FALSE)
   cat("\n")
 
   # Stratified output (only if strata provided)
   if (!is.null(strata)) {
 
-    cat("=== Stratum-Specific Rate Ratios ===\n\n")
+    if (verbose) {
+      cat("=== Stratum-Specific Rate Ratios ===\n\n")
 
-    stratum_output <- agg |>
-      select(stratum, d1, py1, d0, py0, rr, ci_lower, ci_upper) |>
-      mutate(
-        across(c(rr, ci_lower, ci_upper), \(x) round(x, 4)),
-        across(c(py1, py0), \(x) round(x, 1))
-      )
+      stratum_output <- agg |>
+        select(stratum, d1, py1, d0, py0, rr, ci_lower, ci_upper) |>
+        mutate(
+          across(c(rr, ci_lower, ci_upper), \(x) round(x, 4)),
+          across(c(py1, py0), \(x) round(x, 1))
+        )
 
-    print(as.data.frame(stratum_output), row.names = FALSE)
+      print(as.data.frame(stratum_output), row.names = FALSE)
+      cat("\n")
+    }
 
-    cat("\n=== Mantel-Haenszel Pooled Estimate ===\n\n")
+    cat("=== Mantel-Haenszel Pooled Estimate ===\n\n")
 
     # Homogeneity test (Stata stmh formula - lines 186-194 of stmh.ado)
     # q_i = d1_i * py0_i / T_i
@@ -985,7 +1011,7 @@ stmh_r <- function(data, event, exposure, time, strata = NULL, conf.level = 0.95
 #'
 #' @return A list with trend test results.
 #' @keywords internal
-stmh_r_trend <- function(data, event, exposure, time, strata = NULL, conf.level = 0.95) {
+stmh_r_trend <- function(data, event, exposure, time, strata = NULL, conf.level = 0.95, verbose = TRUE) {
 
   alpha <- 1 - conf.level
   z <- qnorm(1 - alpha/2)
@@ -1115,22 +1141,25 @@ stmh_r_trend <- function(data, event, exposure, time, strata = NULL, conf.level 
   print(as.data.frame(rate_output), row.names = FALSE)
 
   if (!is.null(strata)) {
-    cat("\n=== Stratum-Specific Score Statistics ===\n\n")
-    cat("Note:", n_informative, "of", n_total_strata,
-        "strata contribute information\n\n")
+    if (verbose) {
+      cat("\n=== Stratum-Specific Score Statistics ===\n\n")
+      cat("Note:", n_informative, "of", n_total_strata,
+          "strata contribute information\n\n")
 
-    strata_output <- strata_stats |>
-      mutate(
-        rr_i = exp(u / v),
-        across(c(u, v, rr_i), \(x) round(x, 4)),
-        yt = round(yt, 1)
-      ) |>
-      select(.strata, dt, yt, u, v, rr_i)
+      strata_output <- strata_stats |>
+        mutate(
+          rr_i = exp(u / v),
+          across(c(u, v, rr_i), \(x) round(x, 4)),
+          yt = round(yt, 1)
+        ) |>
+        select(.strata, dt, yt, u, v, rr_i)
 
-    names(strata_output) <- c("Stratum", "Events", "Person-time", "u", "v", "RR")
-    print(as.data.frame(strata_output), row.names = FALSE)
+      names(strata_output) <- c("Stratum", "Events", "Person-time", "u", "v", "RR")
+      print(as.data.frame(strata_output), row.names = FALSE)
+      cat("\n")
+    }
 
-    cat("\n=== Mantel-Haenszel Pooled Trend Estimate ===\n\n")
+    cat("=== Mantel-Haenszel Pooled Trend Estimate ===\n\n")
   } else {
     cat("\n=== Mantel-Haenszel Trend Estimate ===\n\n")
   }
@@ -1192,6 +1221,9 @@ stmh_r_trend <- function(data, event, exposure, time, strata = NULL, conf.level 
 #'   odds ratio (default) or \code{"irr"} for incidence rate ratio.
 #' @param conf.level Numeric value between 0 and 1 specifying the confidence level.
 #'   Default is 0.95 (95% CI).
+#' @param verbose Logical. If \code{TRUE} (the default), displays stratum-specific
+#'   estimates when stratification is used. If \code{FALSE}, only shows the pooled
+#'   estimate and summary statistics.
 #'
 #' @return Invisibly returns an object of class \code{"mh_analysis"} containing:
 #' \describe{
@@ -1258,7 +1290,8 @@ mh_analysis <- function(data,
                         time = NULL,
                         strata = NULL,
                         measure = c("or", "irr"),
-                        conf.level = 0.95) {
+                        conf.level = 0.95,
+                        verbose = TRUE) {
 
   measure <- match.arg(measure)
 
@@ -1275,7 +1308,8 @@ mh_analysis <- function(data,
       exposure = exposure,
       outcome = outcome,
       strata_vars = strata,
-      conf.level = conf.level
+      conf.level = conf.level,
+      verbose = verbose
     )
 
     # Standardise output
@@ -1311,7 +1345,8 @@ mh_analysis <- function(data,
       exposure = exposure,
       time = time,
       strata = strata,
-      conf.level = conf.level
+      conf.level = conf.level,
+      verbose = verbose
     )
 
     # Standardise output

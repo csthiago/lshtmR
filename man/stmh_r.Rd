@@ -4,7 +4,15 @@
 \alias{stmh_r}
 \title{Stratified Mantel-Haenszel Rate Ratio}
 \usage{
-stmh_r(data, event, exposure, time, strata = NULL, conf.level = 0.95)
+stmh_r(
+  data,
+  event,
+  exposure,
+  time,
+  strata = NULL,
+  conf.level = 0.95,
+  verbose = TRUE
+)
 }
 \arguments{
 \item{data}{A data frame containing the variables for analysis.}

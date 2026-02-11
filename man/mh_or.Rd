@@ -7,7 +7,14 @@ exposures, computes crude or stratified odds ratios with optional pooling.
 For multi-level numeric exposures, performs a score test for trend.
 Confidence intervals use the Robins-Breslow-Greenland variance estimator.}
 \usage{
-mh_or(data, exposure, outcome, strata_vars = NULL, conf.level = 0.95)
+mh_or(
+  data,
+  exposure,
+  outcome,
+  strata_vars = NULL,
+  conf.level = 0.95,
+  verbose = TRUE
+)
 }
 \arguments{
 \item{data}{A data frame containing the variables for analysis.}
@@ -29,6 +36,9 @@ computes u and v within each stratum and pools across strata.}
 
 \item{conf.level}{Numeric value between 0 and 1 specifying the confidence level
 for the confidence interval. Default is 0.95 (95\% CI).}
+
+\item{verbose}{Logical. If \code{TRUE} (the default), displays stratum-specific
+estimates when stratification is used.}
 }
 \value{
 Invisibly returns a list with the following components:

@@ -4,7 +4,14 @@
 \alias{mh_or_trend}
 \title{Mantel-Haenszel Trend Test for Odds Ratios (internal)}
 \usage{
-mh_or_trend(data, exposure, outcome, strata_vars = NULL, conf.level = 0.95)
+mh_or_trend(
+  data,
+  exposure,
+  outcome,
+  strata_vars = NULL,
+  conf.level = 0.95,
+  verbose = TRUE
+)
 }
 \arguments{
 \item{data}{A data frame.}
