@@ -382,6 +382,7 @@ mh_or <- function(data, exposure, outcome, strata_vars = NULL, conf.level = 0.95
   cat("Mantel-Haenszel Odds Ratio Analysis\n")
   cat("====================================\n")
   cat("Exposure:", exposure, "\n")
+  cat("  comparing", exposure, "=", exp_yes, "vs.", exposure, "=", exp_no, "\n")
   cat("Outcome:", outcome, "\n")
   if (!is.null(strata_vars)) {
     cat("Stratified by:", paste(strata_vars, collapse = ", "), "\n")
@@ -772,14 +773,26 @@ stmh_r <- function(data, event, exposure, time, strata = NULL, conf.level = 0.95
     return(stmh_r_trend(data, event, exposure, time, strata, conf.level))
   }
 
+  # Detect event coding
+
+  event_values <- sort(unique(data[[event]]))
+  event_yes <- event_values[length(event_values)]  # highest value = event
+  event_no <- event_values[1]                       # lowest value = no event
+
   # Binary exposure: check if coded as 0/1
+  exp_levels <- sort(exp_values)
+  exp_yes <- exp_levels[2]  # Store original labels before recoding
+ exp_no <- exp_levels[1]
+
   if (!all(exp_values %in% c(0, 1))) {
     # Convert to 0/1
-    exp_levels <- sort(exp_values)
     data[[exposure]] <- as.integer(data[[exposure]] == exp_levels[2])
-    message("Exposure '", exposure, "' recoded: ", exp_levels[1], " = 0 (unexposed), ",
-            exp_levels[2], " = 1 (exposed)")
   }
+
+  # Print variable coding
+  cat("Variable coding detected:\n")
+  cat("  Exposure:", exposure, "-> Exposed =", exp_yes, ", Unexposed =", exp_no, "\n")
+  cat("  Event:", event, "-> Event =", event_yes, ", No event =", event_no, "\n\n")
 
   # If no strata, create a dummy stratum
   if (is.null(strata)) {
@@ -847,6 +860,7 @@ stmh_r <- function(data, event, exposure, time, strata = NULL, conf.level = 0.95
   cat("====================================\n")
   cat("Event:", event, "\n")
   cat("Exposure:", exposure, "\n")
+  cat("  comparing", exposure, "=", exp_yes, "vs.", exposure, "=", exp_no, "\n")
   if (!is.null(strata)) {
     cat("Stratified by:", strata, "\n")
   }
@@ -875,7 +889,7 @@ stmh_r <- function(data, event, exposure, time, strata = NULL, conf.level = 0.95
 
   cat("=== Exposure-Specific Rates ===\n\n")
   rate_table <- data.frame(
-    Exposure = c(0, 1),
+    Exposure = c(exp_no, exp_yes),
     Events = c(total_d0, total_d1),
     `Person-time` = round(c(total_py0, total_py1), 1),
     Rate = round(c(rate0, rate1), 4),
@@ -883,6 +897,7 @@ stmh_r <- function(data, event, exposure, time, strata = NULL, conf.level = 0.95
     `CI upper` = round(c(rate0_ci_upper, rate1_ci_upper), 4),
     check.names = FALSE
   )
+  names(rate_table)[1] <- exposure
   print(rate_table, row.names = FALSE)
   cat("\n")
 
