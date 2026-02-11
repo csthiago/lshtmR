@@ -2,7 +2,10 @@
 % Please edit documentation in R/mh_fun.R
 \name{mh_or}
 \alias{mh_or}
-\title{Mantel-Haenszel Odds Ratio}
+\title{Calculates the Mantel-Haenszel odds ratio for case-control data. For binary
+exposures, computes crude or stratified odds ratios with optional pooling.
+For multi-level numeric exposures, performs a score test for trend.
+Confidence intervals use the Robins-Breslow-Greenland variance estimator.}
 \usage{
 mh_or(data, exposure, outcome, strata_vars = NULL, conf.level = 0.95)
 }

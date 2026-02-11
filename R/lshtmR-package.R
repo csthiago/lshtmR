@@ -5,6 +5,7 @@
 #' @importFrom dplyr group_by summarise mutate filter select across all_of n n_distinct .data
 #' @importFrom tidyr pivot_wider
 #' @importFrom stats pchisq qnorm
+#' @importFrom utils head
 ## usethis namespace: end
 NULL
 
@@ -14,5 +15,11 @@ utils::globalVariables(c(
   "events", "pyears", "stratum", "d0", "d1", "py0", "py1",
   "rate1", "rate0", "rr", "ln_rr", "var_ln_rr", "se_ln_rr",
   "ci_lower", "ci_upper", "or", "or_lower", "or_upper",
-  "x", "py", "rate", "rate_per_1000"
+  "x", "py", "rate", "rate_per_1000",
+  # Variables for trend tests
+  "cases", "controls", "dt", "pt", "p1", "p2", "u", "v", "or_i",
+  ".strata", "yt", "y1", "y2", "se_ln_rate", "rate_ci_lower", "rate_ci_upper",
+  "ci_lower_1000", "ci_upper_1000", "rr_i",
+  # Variables for strate function
+  "person_time", "rate_scaled", "ci_lower_scaled", "ci_upper_scaled"
 ))

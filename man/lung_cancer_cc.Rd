@@ -37,13 +37,13 @@ data(lung_cancer_cc)
 str(lung_cancer_cc)
 
 # Calculate stratified odds ratio by age group
-mh_or(lung_cancer_cc, "smoking", "case", "age_group")
+mh_analysis(lung_cancer_cc, "smoking", "case", strata = "age_group", measure = "or")
 
 # Calculate stratified odds ratio by sex
-mh_or(lung_cancer_cc, "smoking", "case", "sex")
+mh_analysis(lung_cancer_cc, "smoking", "case", strata = "sex", measure = "or")
 
 # Stratify by both age group and sex
-mh_or(lung_cancer_cc, "smoking", "case", c("age_group", "sex"))
+mh_analysis(lung_cancer_cc, "smoking", "case", strata = c("age_group", "sex"), measure = "or")
 
 }
 \keyword{datasets}
