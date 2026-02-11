@@ -13,7 +13,9 @@ mh_or_trend(data, exposure, outcome, strata_vars = NULL, conf.level = 0.95)
 
 \item{outcome}{Name of binary outcome variable.}
 
-\item{strata_vars}{Name of stratification variable(s) (currently not used for trend).}
+\item{strata_vars}{Name of stratification variable(s). When provided, computes
+u and v within each stratum, then sums across strata for the pooled estimate.
+A test of homogeneity is also performed.}
 
 \item{conf.level}{Confidence level.}
 }

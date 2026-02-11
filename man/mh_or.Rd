@@ -21,8 +21,8 @@ treated as "case" and the lower value as "control".}
 \item{strata_vars}{Character string or vector of character strings specifying
 the stratification variable(s). If \code{NULL} (the default), a crude
 (unstratified) odds ratio is calculated. Multiple variables will be combined
-using \code{\link[base]{interaction}}. Note: stratification is only used
-for binary exposures; for trend tests, stratification is not yet implemented.}
+using \code{\link[base]{interaction}}. For trend tests, stratification
+computes u and v within each stratum and pools across strata.}
 
 \item{conf.level}{Numeric value between 0 and 1 specifying the confidence level
 for the confidence interval. Default is 0.95 (95\% CI).}
@@ -73,26 +73,17 @@ for binary exposures, which matches output from Stata.
 data(lung_cancer_cc)
 
 # Crude (unstratified) odds ratio
-crude_result <- mh_or(lung_cancer_cc, "smoking", "case")
+crude_result <- mh_analysis(lung_cancer_cc, "smoking", "case", measure = "or")
 
 # Stratified by age group
-result <- mh_or(lung_cancer_cc, "smoking", "case", "age_group")
+result <- mh_analysis(lung_cancer_cc, "smoking", "case", strata = "age_group", measure = "or")
 
 # Access the odds ratio
-result$OR_MH
-
-# Stratified by sex
-result2 <- mh_or(lung_cancer_cc, "smoking", "case", "sex")
-
-# Stratified by multiple variables
-result3 <- mh_or(lung_cancer_cc, "smoking", "case", c("age_group", "sex"))
-
-# Trend test with numeric multi-level exposure
-lung_cancer_cc$age_score <- as.numeric(factor(lung_cancer_cc$age_group))
-trend_result <- mh_or(lung_cancer_cc, "age_score", "case")
+result$estimate
 
 }
 \seealso{
 \code{\link{stmh_r}} for stratified rate ratios,
 \code{\link{mh_analysis}} for a unified interface.
 }
+\keyword{internal}

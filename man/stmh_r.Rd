@@ -62,25 +62,19 @@ unexposed group, as this can lead to unreliable confidence intervals.
 data(mortality_cohort)
 
 # Crude rate ratio (no stratification)
-crude_result <- stmh_r(mortality_cohort, "death", "treatment", "person_years")
+crude_result <- mh_analysis(mortality_cohort, "treatment", "death",
+                            time = "person_years", measure = "irr")
 
 # Stratified by disease severity
-strat_result <- stmh_r(mortality_cohort, "death", "treatment", "person_years",
-                       strata = "severity")
+strat_result <- mh_analysis(mortality_cohort, "treatment", "death",
+                            time = "person_years", strata = "severity", measure = "irr")
 
 # Access the rate ratio
-strat_result$irr
-
-# Stratified by age category
-age_result <- stmh_r(mortality_cohort, "death", "treatment", "person_years",
-                     strata = "age_cat")
-
-# Multi-level exposure: trend test for severity (needs numeric coding)
-mortality_cohort$severity_num <- as.numeric(mortality_cohort$severity)
-trend_result <- stmh_r(mortality_cohort, "death", "severity_num", "person_years")
+strat_result$estimate
 
 }
 \seealso{
 \code{\link{mh_or}} for stratified odds ratios,
 \code{\link{mh_analysis}} for a unified interface.
 }
+\keyword{internal}

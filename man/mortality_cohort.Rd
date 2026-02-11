@@ -24,7 +24,6 @@ mortality_cohort
 \description{
 A simulated dataset from a cohort study examining the effect of a treatment
 on mortality, stratified by disease severity and age category.
-This dataset is designed for demonstrating the \code{\link{stmh_r}} function.
 }
 \details{
 The data were simulated with a true incidence rate ratio of approximately 0.6

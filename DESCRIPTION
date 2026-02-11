@@ -1,9 +1,9 @@
 Package: lshtmR
-Title: What the Package Does (One Line, Title Case)
+Title: Mantel-Haenszel procedures for LSHTM classes
 Version: 0.0.0.9000
 Authors@R: 
-    person("Thiago", "Cerqueira-Silva", , "first.last@example.com", role = c("aut", "cre"))
-Description: What the package does (one paragraph).
+    person("Thiago", "Cerqueira-Silva", , "thiago.silva@lshtm.ac.uk", role = c("aut", "cre"))
+Description: Mantel-Haenszel for educational purposes.
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)

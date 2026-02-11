@@ -2,7 +2,7 @@
 % Please edit documentation in R/mh_fun.R
 \name{mh_analysis}
 \alias{mh_analysis}
-\title{Unified Mantel-Haenszel Analysis}
+\title{Mantel-Haenszel Analysis}
 \usage{
 mh_analysis(
   data,
@@ -56,9 +56,7 @@ Invisibly returns an object of class \code{"mh_analysis"} containing:
 }
 \description{
 A unified interface for performing Mantel-Haenszel stratified analyses,
-supporting both odds ratios (for case-control studies) and incidence rate
-ratios (for cohort/follow-up studies). This function provides a consistent
-interface and returns standardised output with an S3 class for pretty printing.
+supporting both odds ratios and incidence rate ratios . This function provides a consistent interface and returns standardised output.
 }
 \details{
 This function serves as a wrapper around \code{\link{mh_or}} and

@@ -15,7 +15,9 @@ stmh_r_trend(data, event, exposure, time, strata = NULL, conf.level = 0.95)
 
 \item{time}{Name of person-time variable.}
 
-\item{strata}{Name of stratification variable(s) (currently not used for trend).}
+\item{strata}{Name of stratification variable(s). When provided, computes
+u and v within each stratum, then sums across strata for the pooled estimate.
+A test of homogeneity is also performed.}
 
 \item{conf.level}{Confidence level.}
 }

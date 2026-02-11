@@ -33,8 +33,8 @@ format_pvalue <- function(p) {
 #' @param strata_vars Character string or vector of character strings specifying
 #'   the stratification variable(s). If \code{NULL} (the default), a crude
 #'   (unstratified) odds ratio is calculated. Multiple variables will be combined
-#'   using \code{\link[base]{interaction}}. Note: stratification is only used
-#'   for binary exposures; for trend tests, stratification is not yet implemented.
+#'   using \code{\link[base]{interaction}}. For trend tests, stratification
+#'   computes u and v within each stratum and pools across strata.
 #' @param conf.level Numeric value between 0 and 1 specifying the confidence level
 #'   for the confidence interval. Default is 0.95 (95% CI).
 #'
@@ -80,25 +80,15 @@ format_pvalue <- function(p) {
 #' data(lung_cancer_cc)
 #'
 #' # Crude (unstratified) odds ratio
-#' crude_result <- mh_or(lung_cancer_cc, "smoking", "case")
+#' crude_result <- mh_analysis(lung_cancer_cc, "smoking", "case", measure = "or")
 #'
 #' # Stratified by age group
-#' result <- mh_or(lung_cancer_cc, "smoking", "case", "age_group")
+#' result <- mh_analysis(lung_cancer_cc, "smoking", "case", strata = "age_group", measure = "or")
 #'
 #' # Access the odds ratio
-#' result$OR_MH
+#' result$estimate
 #'
-#' # Stratified by sex
-#' result2 <- mh_or(lung_cancer_cc, "smoking", "case", "sex")
-#'
-#' # Stratified by multiple variables
-#' result3 <- mh_or(lung_cancer_cc, "smoking", "case", c("age_group", "sex"))
-#'
-#' # Trend test with numeric multi-level exposure
-#' lung_cancer_cc$age_score <- as.numeric(factor(lung_cancer_cc$age_group))
-#' trend_result <- mh_or(lung_cancer_cc, "age_score", "case")
-#'
-#' @export
+#' @keywords internal
 mh_or <- function(data, exposure, outcome, strata_vars = NULL, conf.level = 0.95) {
 
   # Check required variables exist
@@ -326,7 +316,9 @@ mh_or <- function(data, exposure, outcome, strata_vars = NULL, conf.level = 0.95
 #' @param data A data frame.
 #' @param exposure Name of numeric exposure variable.
 #' @param outcome Name of binary outcome variable.
-#' @param strata_vars Name of stratification variable(s) (currently not used for trend).
+#' @param strata_vars Name of stratification variable(s). When provided, computes
+#'   u and v within each stratum, then sums across strata for the pooled estimate.
+#'   A test of homogeneity is also performed.
 #' @param conf.level Confidence level.
 #'
 #' @return A list with trend test results.
@@ -341,7 +333,55 @@ mh_or_trend <- function(data, exposure, outcome, strata_vars = NULL, conf.level 
   out_yes <- out_levels[2]
   out_no <- out_levels[1]
 
-  # Aggregate by exposure level
+  # Create stratum variable if stratification requested
+  if (!is.null(strata_vars)) {
+    data$strata <- interaction(data[, strata_vars, drop = FALSE], drop = TRUE)
+  } else {
+    data$strata <- "Overall"
+  }
+
+  # Aggregate by stratum and exposure level
+  # Stata mhodds trend test formulas (from mhodds.ado lines 273-343):
+  # Within each stratum:
+  # dt = sum(d) = total cases in stratum
+  # pt = sum(n) = total sample size in stratum
+  # d1 = sum(d * x) = weighted sum of cases by exposure score
+  # p1 = sum(n * x) = weighted sum of total by exposure score
+  # p2 = sum(n * x^2) = weighted sum of total by exposure score squared
+  #
+  # u = d1 - (dt * p1 / pt)  - score statistic
+  # v = dt * (pt - dt) * (p2 - p1*p1/pt) / (pt * (pt - 1))  - variance WITH finite pop correction
+  #
+  # For stratified: sum u and v across strata
+  # OR = exp(sum(u)/sum(v))
+  # CI: exp(ln(OR) +/- z/sqrt(sum(v)))
+
+  # Compute stratum-specific u and v
+  strata_stats <- data |>
+    group_by(strata, .data[[exposure]]) |>
+    summarise(
+      cases = sum(.data[[outcome]] == out_yes),
+      controls = sum(.data[[outcome]] == out_no),
+      n = n(),
+      .groups = "drop"
+    ) |>
+    mutate(x = .data[[exposure]]) |>
+    group_by(strata) |>
+    summarise(
+      dt = sum(cases),           # total cases in stratum
+      pt = sum(n),               # total sample size in stratum
+      d1 = sum(cases * x),       # sum(d * x)
+      p1 = sum(n * x),           # sum(n * x)
+      p2 = sum(n * x^2),         # sum(n * x^2)
+      .groups = "drop"
+    ) |>
+    mutate(
+      u = d1 - (dt * p1 / pt),
+      v = dt * (pt - dt) * (p2 - p1 * p1 / pt) / (pt * (pt - 1))
+    ) |>
+    filter(v > 0 & !is.na(v))  # Only informative strata
+
+  # Overall exposure-level frequencies (for display)
   agg <- data |>
     group_by(.data[[exposure]]) |>
     summarise(
@@ -351,51 +391,43 @@ mh_or_trend <- function(data, exposure, outcome, strata_vars = NULL, conf.level 
       .groups = "drop"
     ) |>
     mutate(
-      x = .data[[exposure]],  # exposure score
+      x = .data[[exposure]],
       prop_cases = cases / n
     )
 
-  # Stata mhodds trend test formulas (from mhodds.ado lines 273-343):
-  # Using Stata notation:
-  # dt = sum(d) = total cases
-  # pt = sum(n) = total sample size
-  # d1 = sum(d * x) = weighted sum of cases by exposure score
-  # p1 = sum(n * x) = weighted sum of total by exposure score
-  # p2 = sum(n * x^2) = weighted sum of total by exposure score squared
-  #
-  # u = d1 - (dt * p1 / pt)  - score statistic
-  # v = dt * (pt - dt) * (p2 - p1*p1/pt) / (pt * (pt - 1))  - variance WITH finite pop correction
-  #
-  # OR = exp(u/v)
-  # CI: exp(u/v +/- z/sqrt(v))
-
-  dt <- sum(agg$cases)      # total cases
-  pt <- sum(agg$n)          # total sample size
-  d1 <- sum(agg$cases * agg$x)   # sum(d * x)
-  p1 <- sum(agg$n * agg$x)       # sum(n * x)
-  p2 <- sum(agg$n * agg$x^2)     # sum(n * x^2)
-
-  # Score statistic (u in Stata)
-  u <- d1 - (dt * p1 / pt)
-
-  # Variance (v in Stata) - WITH finite population correction
-  v <- dt * (pt - dt) * (p2 - p1 * p1 / pt) / (pt * (pt - 1))
+  # Pooled estimates (sum across strata)
+  u_total <- sum(strata_stats$u)
+  v_total <- sum(strata_stats$v)
 
   # Chi-squared test statistic: chi2 = u^2 / v
-  chi2_trend <- u^2 / v
+  chi2_trend <- u_total^2 / v_total
   p_trend <- pchisq(chi2_trend, df = 1, lower.tail = FALSE)
 
   # Odds ratio estimate: OR = exp(u/v)
-  ln_or <- u / v
+  ln_or <- u_total / v_total
   or_trend <- exp(ln_or)
 
   # Confidence interval: exp(ln_or +/- z / sqrt(v))
-  # Stata: ef = exp(z / sqrt(v)), then Lower = OR/ef, Upper = OR*ef
-  ci_lower <- exp(ln_or - z / sqrt(v))
-  ci_upper <- exp(ln_or + z / sqrt(v))
+  ci_lower <- exp(ln_or - z / sqrt(v_total))
+  ci_upper <- exp(ln_or + z / sqrt(v_total))
 
   # Standard error of ln(OR): se = 1/sqrt(v)
-  se_ln_or <- 1 / sqrt(v)
+  se_ln_or <- 1 / sqrt(v_total)
+
+  # Homogeneity test (only if stratified with multiple informative strata)
+  n_total_strata <- n_distinct(data$strata)
+  n_informative <- nrow(strata_stats)
+
+  if (!is.null(strata_vars) && n_informative > 1) {
+    # Homogeneity statistic: sum(u_i^2/v_i) - (sum(u_i))^2/sum(v_i)
+    Q_homog <- sum(strata_stats$u^2 / strata_stats$v) - (u_total^2 / v_total)
+    df_homog <- n_informative - 1
+    p_homog <- pchisq(Q_homog, df = df_homog, lower.tail = FALSE)
+  } else {
+    Q_homog <- NA
+    df_homog <- NA
+    p_homog <- NA
+  }
 
   # Output
   cat("\n")
@@ -403,6 +435,9 @@ mh_or_trend <- function(data, exposure, outcome, strata_vars = NULL, conf.level 
   cat("====================================\n")
   cat("Outcome:", outcome, "(Case =", out_yes, ", Control =", out_no, ")\n")
   cat("Exposure:", exposure, "(", length(unique(agg$x)), "levels )\n")
+  if (!is.null(strata_vars)) {
+    cat("Stratified by:", paste(strata_vars, collapse = ", "), "\n")
+  }
   cat("Confidence level:", conf.level * 100, "%\n")
   cat("\n")
 
@@ -417,7 +452,26 @@ mh_or_trend <- function(data, exposure, outcome, strata_vars = NULL, conf.level 
   names(freq_output) <- c(exposure, "Cases", "Controls", "Total", "% Cases")
   print(as.data.frame(freq_output), row.names = FALSE)
 
-  cat("\n=== Mantel-Haenszel Trend Estimate ===\n\n")
+  if (!is.null(strata_vars)) {
+    cat("\n=== Stratum-Specific Score Statistics ===\n\n")
+    cat("Note:", n_informative, "of", n_total_strata,
+        "strata contribute information\n\n")
+
+    strata_output <- strata_stats |>
+      mutate(
+        or_i = exp(u / v),
+        across(c(u, v, or_i), \(x) round(x, 4))
+      ) |>
+      select(strata, dt, pt, u, v, or_i)
+
+    names(strata_output) <- c("Stratum", "Cases", "Total", "u", "v", "OR")
+    print(as.data.frame(strata_output), row.names = FALSE)
+
+    cat("\n=== Mantel-Haenszel Pooled Trend Estimate ===\n\n")
+  } else {
+    cat("\n=== Mantel-Haenszel Trend Estimate ===\n\n")
+  }
+
   cat("Odds ratio per unit increase:", round(or_trend, 4), "\n")
   cat(conf.level * 100, "% CI: ", round(ci_lower, 4), " - ", round(ci_upper, 4), "\n", sep = "")
   cat("SE(ln OR):", round(se_ln_or, 4), "\n")
@@ -428,6 +482,15 @@ mh_or_trend <- function(data, exposure, outcome, strata_vars = NULL, conf.level 
   cat("Chi2(1):", round(chi2_trend, 2), "\n")
   cat("p-value:", format_pvalue(p_trend), "\n")
 
+  # Homogeneity test (only if stratified)
+  if (!is.null(strata_vars) && n_informative > 1) {
+    cat("\n=== Test of Homogeneity ===\n\n")
+    cat("Q statistic:", round(Q_homog, 3), "(df =", df_homog, ")\n")
+    cat("p-value:", format_pvalue(p_homog), "\n")
+  } else if (!is.null(strata_vars) && n_informative <= 1) {
+    cat("\nNote: Too few informative strata to test for homogeneity.\n")
+  }
+
   # Return results
   invisible(list(
     exposure_levels = agg,
@@ -437,12 +500,12 @@ mh_or_trend <- function(data, exposure, outcome, strata_vars = NULL, conf.level 
     se_ln_or = se_ln_or,
     chi2 = chi2_trend,
     p_value = p_trend,
-    n_total_strata = NA,
-    n_informative = NA,
-    strata_data = NULL,
-    homogeneity_Q = NA,
-    homogeneity_df = NA,
-    homogeneity_p = NA,
+    n_total_strata = if (!is.null(strata_vars)) n_total_strata else NA,
+    n_informative = if (!is.null(strata_vars)) n_informative else NA,
+    strata_data = if (!is.null(strata_vars)) strata_stats else NULL,
+    homogeneity_Q = Q_homog,
+    homogeneity_df = df_homog,
+    homogeneity_p = p_homog,
     type = "trend"
   ))
 }
@@ -501,24 +564,17 @@ mh_or_trend <- function(data, exposure, outcome, strata_vars = NULL, conf.level 
 #' data(mortality_cohort)
 #'
 #' # Crude rate ratio (no stratification)
-#' crude_result <- stmh_r(mortality_cohort, "death", "treatment", "person_years")
+#' crude_result <- mh_analysis(mortality_cohort, "treatment", "death",
+#'                             time = "person_years", measure = "irr")
 #'
 #' # Stratified by disease severity
-#' strat_result <- stmh_r(mortality_cohort, "death", "treatment", "person_years",
-#'                        strata = "severity")
+#' strat_result <- mh_analysis(mortality_cohort, "treatment", "death",
+#'                             time = "person_years", strata = "severity", measure = "irr")
 #'
 #' # Access the rate ratio
-#' strat_result$irr
+#' strat_result$estimate
 #'
-#' # Stratified by age category
-#' age_result <- stmh_r(mortality_cohort, "death", "treatment", "person_years",
-#'                      strata = "age_cat")
-#'
-#' # Multi-level exposure: trend test for severity (needs numeric coding)
-#' mortality_cohort$severity_num <- as.numeric(mortality_cohort$severity)
-#' trend_result <- stmh_r(mortality_cohort, "death", "severity_num", "person_years")
-#'
-#' @export
+#' @keywords internal
 stmh_r <- function(data, event, exposure, time, strata = NULL, conf.level = 0.95) {
 
   # Check required variables exist
@@ -637,17 +693,33 @@ stmh_r <- function(data, event, exposure, time, strata = NULL, conf.level = 0.95
   cat("\n")
 
   # Calculate overall rates by exposure (for display)
+  # With confidence intervals using Stata strate method:
+  # SE(ln(rate)) = 1/sqrt(D), CI = exp(ln(rate) +/- z * SE)
   total_d1 <- sum(agg$d1)
   total_d0 <- sum(agg$d0)
   total_py1 <- sum(agg$py1)
   total_py0 <- sum(agg$py0)
+
+  rate0 <- total_d0 / total_py0
+  rate1 <- total_d1 / total_py1
+
+  # CI for rates (Stata strate method)
+  se_ln_rate0 <- ifelse(total_d0 > 0, 1 / sqrt(total_d0), NA)
+  se_ln_rate1 <- ifelse(total_d1 > 0, 1 / sqrt(total_d1), NA)
+
+  rate0_ci_lower <- ifelse(total_d0 > 0, exp(log(rate0) - z * se_ln_rate0), NA)
+  rate0_ci_upper <- ifelse(total_d0 > 0, exp(log(rate0) + z * se_ln_rate0), NA)
+  rate1_ci_lower <- ifelse(total_d1 > 0, exp(log(rate1) - z * se_ln_rate1), NA)
+  rate1_ci_upper <- ifelse(total_d1 > 0, exp(log(rate1) + z * se_ln_rate1), NA)
 
   cat("=== Exposure-Specific Rates ===\n\n")
   rate_table <- data.frame(
     Exposure = c(0, 1),
     Events = c(total_d0, total_d1),
     `Person-time` = round(c(total_py0, total_py1), 1),
-    Rate = round(c(total_d0/total_py0, total_d1/total_py1), 4),
+    Rate = round(c(rate0, rate1), 4),
+    `CI lower` = round(c(rate0_ci_lower, rate1_ci_lower), 4),
+    `CI upper` = round(c(rate0_ci_upper, rate1_ci_upper), 4),
     check.names = FALSE
   )
   print(rate_table, row.names = FALSE)
@@ -745,7 +817,9 @@ stmh_r <- function(data, event, exposure, time, strata = NULL, conf.level = 0.95
 #' @param event Name of event variable.
 #' @param exposure Name of numeric exposure variable.
 #' @param time Name of person-time variable.
-#' @param strata Name of stratification variable(s) (currently not used for trend).
+#' @param strata Name of stratification variable(s). When provided, computes
+#'   u and v within each stratum, then sums across strata for the pooled estimate.
+#'   A test of homogeneity is also performed.
 #' @param conf.level Confidence level.
 #'
 #' @return A list with trend test results.
@@ -755,7 +829,53 @@ stmh_r_trend <- function(data, event, exposure, time, strata = NULL, conf.level 
   alpha <- 1 - conf.level
   z <- qnorm(1 - alpha/2)
 
-  # Aggregate by exposure level
+  # Create stratum variable if stratification requested
+  if (!is.null(strata)) {
+    data$.strata <- interaction(data[, strata, drop = FALSE], drop = TRUE)
+  } else {
+    data$.strata <- "Overall"
+  }
+
+  # Stata stmh trend test formulas (from stmh.ado lines 209-273):
+  # Within each stratum:
+  # dt = sum(d) = total events in stratum
+  # yt = sum(py) = total person-time in stratum
+  # d1 = sum(d * x) = weighted sum of events by exposure score
+  # y1 = sum(py * x) = weighted sum of person-time by exposure score
+  # y2 = sum(py * x^2) = weighted sum of person-time by exposure score squared
+  #
+  # u = d1 - dt * y1 / yt     - score statistic
+  # v = dt * (y2 - y1^2/yt) / yt  - variance (NO finite population correction!)
+  #
+  # For stratified: sum u and v across strata
+  # RR = exp(sum(u)/sum(v))
+  # CI: exp(ln(RR) +/- z/sqrt(sum(v)))
+
+  # Compute stratum-specific u and v
+  strata_stats <- data |>
+    group_by(.strata, .data[[exposure]]) |>
+    summarise(
+      d = sum(.data[[event]], na.rm = TRUE),
+      py = sum(.data[[time]], na.rm = TRUE),
+      .groups = "drop"
+    ) |>
+    mutate(x = .data[[exposure]]) |>
+    group_by(.strata) |>
+    summarise(
+      dt = sum(d),           # total events in stratum
+      yt = sum(py),          # total person-time in stratum
+      d1 = sum(d * x),       # sum(d * x)
+      y1 = sum(py * x),      # sum(py * x)
+      y2 = sum(py * x^2),    # sum(py * x^2)
+      .groups = "drop"
+    ) |>
+    mutate(
+      u = d1 - dt * y1 / yt,
+      v = dt * (y2 - y1^2 / yt) / yt
+    ) |>
+    filter(v > 0 & !is.na(v))  # Only informative strata
+
+  # Overall exposure-level frequencies (for display)
   agg <- data |>
     group_by(.data[[exposure]]) |>
     summarise(
@@ -764,46 +884,43 @@ stmh_r_trend <- function(data, event, exposure, time, strata = NULL, conf.level 
       .groups = "drop"
     ) |>
     mutate(
-      x = .data[[exposure]],  # exposure score
+      x = .data[[exposure]],
       rate = d / py
     )
 
-  # Total events and person-time
-  D <- sum(agg$d)
-  T_total <- sum(agg$py)
-
-  # Stata stmh trend test formulas (from stmh.ado lines 209-273):
-  # d1 = sum(d * x)           - weighted sum of events by exposure score
-  # y1 = sum(py * x)          - weighted sum of person-time by exposure score
-  # y2 = sum(py * x^2)        - weighted sum of person-time by exposure score squared
-  # dt = D                    - total events
-  # yt = T                    - total person-time
-  #
-  # u = d1 - dt * y1 / yt     - score statistic
-  # v = dt * (y2 - y1^2/yt) / yt  - variance (NO finite population correction!)
-
-  d1 <- sum(agg$d * agg$x)      # sum(d * x)
-  y1 <- sum(agg$py * agg$x)     # sum(py * x)
-  y2 <- sum(agg$py * agg$x^2)   # sum(py * x^2)
-
-  # Score statistic (u in Stata)
-  u <- d1 - D * y1 / T_total
-
-  # Variance (v in Stata) - NOTE: No finite population correction
-  v <- D * (y2 - y1^2 / T_total) / T_total
+  # Pooled estimates (sum across strata)
+  u_total <- sum(strata_stats$u)
+  v_total <- sum(strata_stats$v)
 
   # Chi-squared test statistic: chi2 = u^2 / v
-  chi2_trend <- u^2 / v
+  chi2_trend <- u_total^2 / v_total
   p_trend <- pchisq(chi2_trend, df = 1, lower.tail = FALSE)
 
   # Rate ratio estimate: RR = exp(u/v)
-  ln_rr <- u / v
+  ln_rr <- u_total / v_total
   rr_trend <- exp(ln_rr)
 
   # Confidence interval: exp(ln_rr +/- z / sqrt(v))
-  # Stata: ef = exp(z / sqrt(v)), then Lower = RR/ef, Upper = RR*ef
-  ci_lower <- exp(ln_rr - z / sqrt(v))
-  ci_upper <- exp(ln_rr + z / sqrt(v))
+  ci_lower <- exp(ln_rr - z / sqrt(v_total))
+  ci_upper <- exp(ln_rr + z / sqrt(v_total))
+
+  # Standard error of ln(RR): se = 1/sqrt(v)
+  se_ln_rr <- 1 / sqrt(v_total)
+
+  # Homogeneity test (only if stratified with multiple informative strata)
+  n_total_strata <- n_distinct(data$.strata)
+  n_informative <- nrow(strata_stats)
+
+  if (!is.null(strata) && n_informative > 1) {
+    # Homogeneity statistic: sum(u_i^2/v_i) - (sum(u_i))^2/sum(v_i)
+    Q_homog <- sum(strata_stats$u^2 / strata_stats$v) - (u_total^2 / v_total)
+    df_homog <- n_informative - 1
+    p_homog <- pchisq(Q_homog, df = df_homog, lower.tail = FALSE)
+  } else {
+    Q_homog <- NA
+    df_homog <- NA
+    p_homog <- NA
+  }
 
   # Output
   cat("\n")
@@ -811,25 +928,54 @@ stmh_r_trend <- function(data, event, exposure, time, strata = NULL, conf.level 
   cat("==============================\n")
   cat("Event:", event, "\n")
   cat("Exposure:", exposure, "(", length(unique(agg$x)), "levels )\n")
+  if (!is.null(strata)) {
+    cat("Stratified by:", paste(strata, collapse = ", "), "\n")
+  }
   cat("Confidence level:", conf.level * 100, "%\n")
   cat("\n")
 
   cat("=== Exposure-Specific Rates ===\n\n")
 
+  # Add CIs for rates using Stata strate method: SE(ln(rate)) = 1/sqrt(D)
   rate_output <- agg |>
     select(x, d, py, rate) |>
     mutate(
+      se_ln_rate = ifelse(d > 0, 1 / sqrt(d), NA),
+      rate_ci_lower = ifelse(d > 0, exp(log(rate) - z * se_ln_rate), NA),
+      rate_ci_upper = ifelse(d > 0, exp(log(rate) + z * se_ln_rate), NA),
       rate_per_1000 = round(rate * 1000, 2),
+      ci_lower_1000 = round(rate_ci_lower * 1000, 2),
+      ci_upper_1000 = round(rate_ci_upper * 1000, 2),
       py = round(py, 1)
     ) |>
-    select(x, d, py, rate_per_1000)
+    select(x, d, py, rate_per_1000, ci_lower_1000, ci_upper_1000)
 
-  names(rate_output) <- c(exposure, "Events", "Person-time", "Rate/1000")
+  names(rate_output) <- c(exposure, "Events", "Person-time", "Rate/1000", "CI lower", "CI upper")
   print(as.data.frame(rate_output), row.names = FALSE)
 
-  cat("\n=== Mantel-Haenszel Trend Estimate ===\n\n")
+  if (!is.null(strata)) {
+    cat("\n=== Stratum-Specific Score Statistics ===\n\n")
+    cat("Note:", n_informative, "of", n_total_strata,
+        "strata contribute information\n\n")
+
+    strata_output <- strata_stats |>
+      mutate(
+        rr_i = exp(u / v),
+        across(c(u, v, rr_i), \(x) round(x, 4)),
+        yt = round(yt, 1)
+      ) |>
+      select(.strata, dt, yt, u, v, rr_i)
+
+    names(strata_output) <- c("Stratum", "Events", "Person-time", "u", "v", "RR")
+    print(as.data.frame(strata_output), row.names = FALSE)
+
+    cat("\n=== Mantel-Haenszel Pooled Trend Estimate ===\n\n")
+  } else {
+    cat("\n=== Mantel-Haenszel Trend Estimate ===\n\n")
+  }
+
   cat("Rate ratio per unit increase:", round(rr_trend, 4), "\n")
-  cat("95% CI:", round(ci_lower, 4), "-", round(ci_upper, 4), "\n")
+  cat(conf.level * 100, "% CI: ", round(ci_lower, 4), " - ", round(ci_upper, 4), "\n", sep = "")
   cat("\n")
   cat("Note: The rate ratio is an approximation to the rate ratio\n")
   cat("      for a one-unit increase in", exposure, "\n")
@@ -838,8 +984,14 @@ stmh_r_trend <- function(data, event, exposure, time, strata = NULL, conf.level 
   cat("Chi2(1):", round(chi2_trend, 2), "\n")
   cat("p-value:", format_pvalue(p_trend), "\n")
 
-  # Standard error of ln(RR): se = 1/sqrt(v)
-  se_ln_rr <- 1 / sqrt(v)
+  # Homogeneity test (only if stratified)
+  if (!is.null(strata) && n_informative > 1) {
+    cat("\n=== Test of Homogeneity ===\n\n")
+    cat("Q statistic:", round(Q_homog, 3), "(df =", df_homog, ")\n")
+    cat("p-value:", format_pvalue(p_homog), "\n")
+  } else if (!is.null(strata) && n_informative <= 1) {
+    cat("\nNote: Too few informative strata to test for homogeneity.\n")
+  }
 
   # Return results
   invisible(list(
@@ -849,17 +1001,21 @@ stmh_r_trend <- function(data, event, exposure, time, strata = NULL, conf.level 
     ci = c(ci_lower, ci_upper),
     chi2_trend = chi2_trend,
     p_trend = p_trend,
+    n_total_strata = if (!is.null(strata)) n_total_strata else NA,
+    n_informative = if (!is.null(strata)) n_informative else NA,
+    strata_data = if (!is.null(strata)) strata_stats else NULL,
+    homogeneity_Q = Q_homog,
+    homogeneity_df = df_homog,
+    homogeneity_p = p_homog,
     type = "trend"
   ))
 }
 
 
-#' Unified Mantel-Haenszel Analysis
+#' Mantel-Haenszel Analysis
 #'
 #' A unified interface for performing Mantel-Haenszel stratified analyses,
-#' supporting both odds ratios (for case-control studies) and incidence rate
-#' ratios (for cohort/follow-up studies). This function provides a consistent
-#' interface and returns standardised output with an S3 class for pretty printing.
+#' supporting both odds ratios and incidence rate ratios . This function provides a consistent interface and returns standardised output.
 #'
 #' @param data A data frame containing the variables for analysis.
 #' @param exposure Character string specifying the name of the exposure variable.
