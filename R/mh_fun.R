@@ -86,7 +86,22 @@ strate <- function(data, event, time, strata = NULL, per = 1000, conf.level = 0.
   if (!all(required_vars %in% names(data))) {
     stop("One or more variables not found in data")
   }
-
+  n_all <- nrow(data)
+  data_raw <- data
+  # Check missing exposure
+  if (any(is.na(data[strata]))) {
+    warning("Missing data detected in strata, ", sum(is.na(data[[strata]]))," rows with missing strata dropped")
+    data <- data[complete.cases(data[strata]), ]
+  }
+  # Check missing outcome
+  if (any(is.na(data[event]))) {
+    warning("Missing data detected in outcome, ", sum(is.na(data[[event]]))," rows with missing outcome dropped")
+    data <- data[complete.cases(data[event]), ]
+  }
+  n_non_missing <- nrow(data)
+  if (any(is.na(data_raw[event])) & any(is.na(data_raw[strata]))) {
+    warning("Total of ", n_all - n_non_missing," rows were dropped due to missing in outcome or strata")
+  }
   alpha <- 1 - conf.level
   z <- qnorm(1 - alpha/2)
 
@@ -129,6 +144,10 @@ strate <- function(data, event, time, strata = NULL, per = 1000, conf.level = 0.
   }
   cat("Confidence level:", conf.level * 100, "%\n")
   cat("Rate per:", format(per, big.mark = ","), "\n")
+  if (any(is.na(data_raw[event])) | any(is.na(data_raw[strata]))) {
+    cat("Missing data (strata and/or outcome)", n_all - n_non_missing, "rows (",
+        round((n_all - n_non_missing)/n_all,2),"%)")
+  }
   cat("\n")
 
   # Prepare output table
@@ -261,17 +280,22 @@ mh_or <- function(data, exposure, outcome, strata_vars = NULL, conf.level = 0.95
   if (!all(required_vars %in% names(data))) {
     stop("One or more variables not found in data")
   }
-  
+
+  n_all <- nrow(data)
+  data_raw <- data
   # Check missing exposure
   if (any(is.na(data[exposure]))) {
     warning("Missing data detected in exposure, ", sum(is.na(data[[exposure]]))," rows with missing exposure dropped")
     data <- data[complete.cases(data[exposure]), ]
   }
-  
   # Check missing outcome
   if (any(is.na(data[outcome]))) {
     warning("Missing data detected in outcome, ", sum(is.na(data[[outcome]]))," rows with missing outcome dropped")
     data <- data[complete.cases(data[outcome]), ]
+  }
+  n_non_missing <- nrow(data)
+  if (any(is.na(data_raw[outcome])) & any(is.na(data_raw[exposure]))) {
+    warning("Total of ", n_all - n_non_missing," rows were dropped due to missing in outcome or exposure")
   }
 
   alpha <- 1 - conf.level
@@ -301,7 +325,7 @@ mh_or <- function(data, exposure, outcome, strata_vars = NULL, conf.level = 0.95
            "\nConvert to numeric scores (e.g., 1, 2, 3) for trend analysis.")
     }
     # Run trend test for odds ratio
-    return(mh_or_trend(data, exposure, outcome, strata_vars, conf.level, verbose))
+    return(mh_or_trend(data,data_raw, exposure, outcome, strata_vars, conf.level, verbose))
   }
 
   # If no strata, create a dummy stratum
@@ -402,7 +426,12 @@ mh_or <- function(data, exposure, outcome, strata_vars = NULL, conf.level = 0.95
     cat("Stratified by:", paste(strata_vars, collapse = ", "), "\n")
   }
   cat("Confidence level:", conf.level * 100, "%\n")
+  if (any(is.na(data_raw[outcome])) | any(is.na(data_raw[exposure]))) {
+    cat("Missing data (treatment and/or outcome)", n_all - n_non_missing, "rows (",
+        round((n_all - n_non_missing)/n_all,2),"%)")
+  }
   cat("\n")
+
 
   # Calculate overall 2x2 table for display
   total_a <- sum(results$a)
@@ -502,7 +531,7 @@ mh_or <- function(data, exposure, outcome, strata_vars = NULL, conf.level = 0.95
 #'
 #' @return A list with trend test results.
 #' @keywords internal
-mh_or_trend <- function(data, exposure, outcome, strata_vars = NULL, conf.level = 0.95, verbose = TRUE) {
+mh_or_trend <- function(data,data_raw, exposure, outcome, strata_vars = NULL, conf.level = 0.95, verbose = TRUE) {
 
   alpha <- 1 - conf.level
   z <- qnorm(1 - alpha/2)
@@ -618,6 +647,10 @@ mh_or_trend <- function(data, exposure, outcome, strata_vars = NULL, conf.level 
     cat("Stratified by:", paste(strata_vars, collapse = ", "), "\n")
   }
   cat("Confidence level:", conf.level * 100, "%\n")
+  if (any(is.na(data_raw[outcome])) | any(is.na(data_raw[exposure]))) {
+    cat("Missing data (treatment and/or outcome)", nrow(data_raw) - nrow(data), "rows (",
+        round((nrow(data_raw) - nrow(data))/nrow(data_raw),2),"%)")
+  }
   cat("\n")
 
   cat("=== Exposure-Specific Frequencies ===\n\n")
@@ -767,6 +800,22 @@ stmh_r <- function(data, event, exposure, time, strata = NULL, conf.level = 0.95
     stop("One or more variables not found in data")
   }
 
+  n_all <- nrow(data)
+  data_raw <- data
+  # Check missing exposure
+  if (any(is.na(data[exposure]))) {
+    warning("Missing data detected in exposure, ", sum(is.na(data[[exposure]]))," rows with missing exposure dropped")
+    data <- data[complete.cases(data[exposure]), ]
+  }
+  # Check missing outcome
+  if (any(is.na(data[event]))) {
+    warning("Missing data detected in outcome, ", sum(is.na(data[[event]]))," rows with missing outcome dropped")
+    data <- data[complete.cases(data[event]), ]
+  }
+  n_non_missing <- nrow(data)
+  if (any(is.na(data_raw[event])) & any(is.na(data_raw[exposure]))) {
+    warning("Total of ", n_all - n_non_missing," rows were dropped due to missing in outcome or exposure")
+  }
   alpha <- 1 - conf.level
   z <- qnorm(1 - alpha/2)
 
@@ -790,7 +839,7 @@ stmh_r <- function(data, event, exposure, time, strata = NULL, conf.level = 0.95
            "\nConvert to numeric scores (e.g., 1, 2, 3) for trend analysis.")
     }
     # Run trend test
-    return(stmh_r_trend(data, event, exposure, time, strata, conf.level, verbose))
+    return(stmh_r_trend(data,data_raw, event, exposure, time, strata, conf.level, verbose))
   }
 
   # Detect event coding
@@ -842,6 +891,14 @@ stmh_r <- function(data, event, exposure, time, strata = NULL, conf.level = 0.95
   agg <- agg |>
     select(stratum, d1, py1, d0, py0)
 
+  #Fix problem when strata has missing only in one category of exposure
+  #assign 0 events and 0 py to the other category
+
+  agg <- agg |>
+    mutate(
+      across(c(d1,py1,d0,py0),\(x) if_else(is.na(x),0,x))
+    )
+
   # Warn about zero cells
   if (any(agg$d1 == 0) | any(agg$d0 == 0)) {
     warning("Zero events in some strata. CIs may be unreliable.")
@@ -885,15 +942,19 @@ stmh_r <- function(data, event, exposure, time, strata = NULL, conf.level = 0.95
     cat("Stratified by:", strata, "\n")
   }
   cat("Confidence level:", conf.level * 100, "%\n")
+  if (any(is.na(data_raw[event])) | any(is.na(data_raw[exposure]))) {
+    cat("Missing data (treatment and/or outcome)", n_all - n_non_missing, "rows (",
+        round((n_all - n_non_missing)/n_all,2),"%)")
+  }
   cat("\n")
 
   # Calculate overall rates by exposure (for display)
   # With confidence intervals using Stata strate method:
   # SE(ln(rate)) = 1/sqrt(D), CI = exp(ln(rate) +/- z * SE)
-  total_d1 <- sum(agg$d1)
-  total_d0 <- sum(agg$d0)
-  total_py1 <- sum(agg$py1)
-  total_py0 <- sum(agg$py0)
+  total_d1 <- sum(agg$d1, na.rm = T)
+  total_d0 <- sum(agg$d0, na.rm = T)
+  total_py1 <- sum(agg$py1, na.rm = T)
+  total_py0 <- sum(agg$py0, na.rm = T)
 
   rate0 <- total_d0 / total_py0
   rate1 <- total_d1 / total_py1
@@ -1023,7 +1084,7 @@ stmh_r <- function(data, event, exposure, time, strata = NULL, conf.level = 0.95
 #'
 #' @return A list with trend test results.
 #' @keywords internal
-stmh_r_trend <- function(data, event, exposure, time, strata = NULL, conf.level = 0.95, verbose = TRUE) {
+stmh_r_trend <- function(data,data_raw, event, exposure, time, strata = NULL, conf.level = 0.95, verbose = TRUE) {
 
   alpha <- 1 - conf.level
   z <- qnorm(1 - alpha/2)
@@ -1131,6 +1192,10 @@ stmh_r_trend <- function(data, event, exposure, time, strata = NULL, conf.level 
     cat("Stratified by:", paste(strata, collapse = ", "), "\n")
   }
   cat("Confidence level:", conf.level * 100, "%\n")
+  if (any(is.na(data_raw[event])) | any(is.na(data_raw[exposure]))) {
+    cat("Missing data (treatment and/or outcome)", nrow(data_raw) - nrow(data), "rows (",
+        round((nrow(data_raw) - nrow(data))/nrow(data_raw),2),"%)")
+  }
   cat("\n")
 
   cat("=== Exposure-Specific Rates ===\n\n")
@@ -1219,7 +1284,9 @@ stmh_r_trend <- function(data, event, exposure, time, strata = NULL, conf.level 
 #' A unified interface for performing Mantel-Haenszel stratified analyses,
 #' supporting both odds ratios and incidence rate ratios . This function provides a consistent interface and returns standardised output.
 #'
-#' @param data A data frame containing the variables for analysis.
+#' @param data A data frame containing the variables for analysis. Missing data
+#' on either outcome or exposure will be removed. Missing data on strata variables
+#' will be aggregated as a "NA" category
 #' @param exposure Character string specifying the name of the exposure variable.
 #' @param outcome Character string specifying the name of the outcome variable.
 #'   For odds ratio analysis (\code{measure = "or"}), this is the case/control
@@ -1306,6 +1373,7 @@ mh_analysis <- function(data,
                         verbose = TRUE) {
 
   measure <- match.arg(measure)
+
 
   # Validate inputs based on measure type
   if (measure == "or") {

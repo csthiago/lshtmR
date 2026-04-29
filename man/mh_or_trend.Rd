@@ -6,6 +6,7 @@
 \usage{
 mh_or_trend(
   data,
+  data_raw,
   exposure,
   outcome,
   strata_vars = NULL,

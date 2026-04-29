@@ -16,7 +16,9 @@ mh_analysis(
 )
 }
 \arguments{
-\item{data}{A data frame containing the variables for analysis.}
+\item{data}{A data frame containing the variables for analysis. Missing data
+on either outcome or exposure will be removed. Missing data on strata variables
+will be aggregated as a "NA" category}
 
 \item{exposure}{Character string specifying the name of the exposure variable.}
 
