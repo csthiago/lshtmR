@@ -1,6 +1,6 @@
 # MIT License
 
-Copyright (c) 2026 London School of Hygiene and Tropical Medicine
+Copyright (c) 2026 Thiago Cerqueira Silva
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
