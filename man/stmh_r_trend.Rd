@@ -6,6 +6,7 @@
 \usage{
 stmh_r_trend(
   data,
+  data_raw,
   event,
   exposure,
   time,
