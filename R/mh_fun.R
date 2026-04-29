@@ -261,6 +261,18 @@ mh_or <- function(data, exposure, outcome, strata_vars = NULL, conf.level = 0.95
   if (!all(required_vars %in% names(data))) {
     stop("One or more variables not found in data")
   }
+  
+  # Check missing exposure
+  if (any(is.na(data[exposure]))) {
+    warning("Missing data detected in exposure, ", sum(is.na(data[[exposure]]))," rows with missing exposure dropped")
+    data <- data[complete.cases(data[exposure]), ]
+  }
+  
+  # Check missing outcome
+  if (any(is.na(data[outcome]))) {
+    warning("Missing data detected in outcome, ", sum(is.na(data[[outcome]]))," rows with missing outcome dropped")
+    data <- data[complete.cases(data[outcome]), ]
+  }
 
   alpha <- 1 - conf.level
   z <- qnorm(1 - alpha/2)
