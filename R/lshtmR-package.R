@@ -2,7 +2,7 @@
 "_PACKAGE"
 
 ## usethis namespace: start
-#' @importFrom dplyr group_by summarise mutate filter select across all_of n n_distinct .data
+#' @importFrom dplyr group_by summarise if_else mutate filter select across all_of n n_distinct .data
 #' @importFrom tidyr pivot_wider
 #' @importFrom stats pchisq qnorm
 #' @importFrom utils head
