@@ -8,3 +8,5 @@ data-raw/
 .DS_Store
 .quarto
 .positai
+
+R/teste_script.R

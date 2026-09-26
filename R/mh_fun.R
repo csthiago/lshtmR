@@ -200,7 +200,7 @@ strate <- function(data, event, time, strata = NULL, per = 1000, conf.level = 0.
 #' Calculates the Mantel-Haenszel odds ratio for case-control data. For binary
 #' exposures, computes crude or stratified odds ratios with optional pooling.
 #' For multi-level numeric exposures, performs a score test for trend.
-#' Confidence intervals use the Robins-Breslow-Greenland variance estimator.
+#' Confidence intervals use the Clayton & Hills formula.
 #'
 #' @param data A data frame containing the variables for analysis.
 #' @param exposure Character string specifying the name of the exposure variable.
@@ -360,11 +360,15 @@ mh_or <- function(data, exposure, outcome, strata_vars = NULL, conf.level = 0.95
       m0 = b + d,  # controls
       n1 = a + b,  # exposed
       n0 = c + d,  # unexposed
-      # Stratum-specific OR and CI (Woolf method)
-      or = (a * d) / (b * c),
-      se_ln_or = sqrt(1/a + 1/b + 1/c + 1/d),
-      or_lower = exp(log(or) - z * se_ln_or),
-      or_upper = exp(log(or) + z * se_ln_or)
+      # Stratum-specific OR and CI (mhodds / Clayton & Hills error factor)
+      q  = a * d / n,
+      r  = b * c / n,
+      v  = as.numeric(n1) * as.numeric(n0) * as.numeric(m1) * as.numeric(m0) /
+        (as.numeric(n)^2 * (n - 1)),
+      or = q / r,
+      se_ln_or = ifelse(q > 0 & r > 0, sqrt(v / (q * r)), NA_real_),
+      or_lower = or / exp(z * se_ln_or),
+      or_upper = or * exp(z * se_ln_or)
     ) |>
     filter(a * d > 0 | b * c > 0)
 
@@ -901,7 +905,7 @@ stmh_r <- function(data, event, exposure, time, strata = NULL, conf.level = 0.95
 
   # Warn about zero cells
   if (any(agg$d1 == 0) | any(agg$d0 == 0)) {
-    warning("Zero events in some strata. CIs may be unreliable.")
+    warning("Zero events in some strata. CIs may be unreliable. \n Not possible to calculate homogeneity test")
   }
 
   # Stratum-specific estimates

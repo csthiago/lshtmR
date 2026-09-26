@@ -5,7 +5,7 @@
 \title{Calculates the Mantel-Haenszel odds ratio for case-control data. For binary
 exposures, computes crude or stratified odds ratios with optional pooling.
 For multi-level numeric exposures, performs a score test for trend.
-Confidence intervals use the Robins-Breslow-Greenland variance estimator.}
+Confidence intervals use the Clayton & Hills formula.}
 \usage{
 mh_or(
   data,
@@ -62,7 +62,7 @@ Invisibly returns a list with the following components:
 Calculates the Mantel-Haenszel odds ratio for case-control data. For binary
 exposures, computes crude or stratified odds ratios with optional pooling.
 For multi-level numeric exposures, performs a score test for trend.
-Confidence intervals use the Robins-Breslow-Greenland variance estimator.
+Confidence intervals use the Clayton & Hills formula.
 }
 \details{
 The function automatically detects the coding of binary variables by sorting

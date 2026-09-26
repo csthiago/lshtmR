@@ -19,5 +19,10 @@ Useful links:
 \author{
 \strong{Maintainer}: Thiago Cerqueira-Silva \email{thiago.silva@lshtm.ac.uk}
 
+Authors:
+\itemize{
+  \item Thiago Cerqueira-Silva \email{thiago.silva@lshtm.ac.uk}
+}
+
 }
 \keyword{internal}
