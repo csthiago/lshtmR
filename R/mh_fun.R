@@ -1250,7 +1250,7 @@ stmh_r_trend <- function(data,data_raw, event, exposure, time, strata = NULL, co
   cat("Rate ratio per unit increase:", round(rr_trend, 4), "\n")
   cat(conf.level * 100, "% CI: ", round(ci_lower, 4), " - ", round(ci_upper, 4), "\n", sep = "")
   cat("\n")
-  cat("Note: The rate ratio is an approximation to the rate ratio\n")
+  cat("Note: The rate ratio is an approximation to the change in rate\n")
   cat("      for a one-unit increase in", exposure, "\n")
 
   cat("\n=== Score Test for Trend ===\n\n")
