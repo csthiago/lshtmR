@@ -677,11 +677,12 @@ mh_or_trend <- function(data,data_raw, exposure, outcome, strata_vars = NULL, co
       strata_output <- strata_stats |>
         mutate(
           or_i = exp(u / v),
+          ci = paste0(round(exp(u/v - z/sqrt(v)),4)," - ",ci_upper = round(exp(u/v + z/sqrt(v)),4)),
           across(c(u, v, or_i), \(x) round(x, 4))
         ) |>
-        select(strata, dt, pt, u, v, or_i)
+        select(strata, dt, pt, u, v, or_i, ci)
 
-      names(strata_output) <- c("Stratum", "Cases", "Total", "u", "v", "OR")
+      names(strata_output) <- c("Stratum", "Cases", "Total", "u", "v", "OR","CI")
       print(as.data.frame(strata_output), row.names = FALSE)
       cat("\n")
     }
@@ -1230,12 +1231,13 @@ stmh_r_trend <- function(data,data_raw, event, exposure, time, strata = NULL, co
       strata_output <- strata_stats |>
         mutate(
           rr_i = exp(u / v),
+          ci = paste0(round(exp(u/v - z/sqrt(v)),4)," - ",ci_upper = round(exp(u/v + z/sqrt(v)),4)),
           across(c(u, v, rr_i), \(x) round(x, 4)),
           yt = round(yt, 1)
         ) |>
-        select(.strata, dt, yt, u, v, rr_i)
+        select(.strata, dt, yt, u, v, rr_i, ci)
 
-      names(strata_output) <- c("Stratum", "Events", "Person-time", "u", "v", "RR")
+      names(strata_output) <- c("Stratum", "Events", "Person-time", "u", "v", "RR","CI")
       print(as.data.frame(strata_output), row.names = FALSE)
       cat("\n")
     }
