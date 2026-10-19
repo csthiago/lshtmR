@@ -4,6 +4,9 @@ You can install using
 
 ``` r
 devtools::install_github("csthiago/lshtmR")
+# or
+pak::pak("csthiago/lshtmR")
+
 ```
 
 Minimal example
