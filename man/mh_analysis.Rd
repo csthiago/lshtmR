@@ -48,9 +48,10 @@ a score test for trend is performed instead (exposure must be numeric).}
 \item{conf.level}{Numeric value between 0 and 1 specifying the confidence level.
 Default is 0.95 (95\% CI).}
 
-\item{verbose}{Logical. If \code{TRUE} (the default), displays stratum-specific
-estimates when stratification is used. If \code{FALSE}, only shows the pooled
-estimate and summary statistics.}
+\item{verbose}{Logical. If \code{TRUE} (the default), the full output is printed
+while the analysis runs. If \code{FALSE}, nothing is printed (warnings are
+still shown); the full output is stored in the returned object and can be
+displayed later with \code{print()}.}
 }
 \value{
 Invisibly returns an object of class \code{"mh_analysis"}. For a binary

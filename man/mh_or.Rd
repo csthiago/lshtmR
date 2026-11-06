@@ -2,10 +2,7 @@
 % Please edit documentation in R/mh_fun.R
 \name{mh_or}
 \alias{mh_or}
-\title{Calculates the Mantel-Haenszel odds ratio for case-control data. For binary
-exposures, computes crude or stratified odds ratios with optional pooling.
-For multi-level numeric exposures, performs a score test for trend.
-Confidence intervals use the Clayton & Hills formula.}
+\title{Mantel-Haenszel Odds Ratio}
 \usage{
 mh_or(
   data,
@@ -79,8 +76,8 @@ For multi-level numeric exposures, a Mantel extension score test for trend
 is performed. The odds ratio represents the change in odds per one-unit
 increase in the exposure variable.
 
-The confidence interval uses the Robins-Breslow-Greenland variance formula
-for binary exposures, which matches output from Stata.
+The confidence interval uses the Clayton & Hills error factor
+(\code{exp(z * sqrt(V / (Q * R)))}), as in Stata's \code{mhodds} command.
 }
 \examples{
 # Using the included lung cancer case-control dataset

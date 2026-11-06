@@ -13,6 +13,6 @@ format_pvalue(p)
 Character string with formatted p-value.
 }
 \description{
-Formats a p-value for display, showing "p<0.0001" when the value rounds to 0.
+Formats a p-value for display, showing "<0.0001" when the value rounds to 0.
 }
 \keyword{internal}

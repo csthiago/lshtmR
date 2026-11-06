@@ -6,3 +6,7 @@
 ^\.github$
 ^\.positai$
 ^\.claude$
+^stata$
+^\.DS_Store$
+^\.Rhistory$
+^dev$

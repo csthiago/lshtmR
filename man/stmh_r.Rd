@@ -20,10 +20,12 @@ stmh_r(
 
 \item{event}{Character string specifying the name of the event/case count variable.
 Should contain numeric values representing the number of events (typically 0 or 1
-for individual-level data, or counts for aggregated data).}
+for individual-level data, or counts for aggregated data). A binary event
+coded otherwise (e.g. 1/2) is recoded to 0/1, with the highest value as the event.}
 
 \item{exposure}{Character string specifying the name of the exposure variable.
-Should be a binary variable coded as 0 (unexposed) and 1 (exposed).}
+Binary (the higher value, or the level that is not \code{exp_ref}, is treated
+as exposed) or multi-level numeric (trend test).}
 
 \item{time}{Character string specifying the name of the person-time variable.
 Should contain numeric values representing the follow-up time (e.g., person-years).}
@@ -54,9 +56,10 @@ the pooled estimate with confidence intervals using the Greenland-Robins varianc
 estimator.
 }
 \details{
-The function assumes that the exposure variable is coded as 0 (unexposed) and
-1 (exposed). Events and person-time are aggregated within each stratum-exposure
-combination.
+The exposure is recoded internally to 1 (exposed) and 0 (unexposed). Events
+and person-time are aggregated within each stratum-exposure combination.
+Rows with missing exposure, event or person-time are dropped. Multiple
+stratification variables are combined with \code{\link[base]{interaction}}.
 
 The pooled rate ratio is calculated using the Mantel-Haenszel method, and the
 variance is estimated using the Greenland-Robins formula. When stratification

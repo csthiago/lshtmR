@@ -1,18 +1,58 @@
 #' Format p-value for display
 #'
-#' Formats a p-value for display, showing "p<0.0001" when the value rounds to 0.
+#' Formats a p-value for display, showing "<0.0001" when the value rounds to 0.
 #'
 #' @param p Numeric p-value.
 #' @return Character string with formatted p-value.
 #' @keywords internal
 format_pvalue <- function(p) {
-  if (is.na(p)) return(NA_character_)
+  if (is.null(p) || length(p) == 0 || is.na(p)) return(NA_character_)
   rounded <- round(p, 4)
   if (rounded == 0) {
     return("<0.0001")
   } else {
-    return(as.character(rounded))
+    return(format(rounded, scientific = FALSE))
   }
+}
+
+
+#' Print the amount of missing data (internal)
+#'
+#' @param n_all Number of rows before dropping missing data.
+#' @param n_used Number of rows used in the analysis.
+#' @param what Character string describing the variables checked.
+#' @noRd
+cat_missing <- function(n_all, n_used, what) {
+  n_miss <- n_all - n_used
+  if (n_miss > 0) {
+    cat("Missing data (", what, "): ", n_miss, " rows (",
+        round(100 * n_miss / n_all, 1), "%)\n", sep = "")
+  }
+}
+
+
+#' Recode a binary event variable to 0/1 (internal)
+#'
+#' A binary event variable that is not coded with 0 as "no event" (e.g. 1/2,
+#' "no"/"yes", or a factor) is recoded so that the highest value is 1 (event)
+#' and the lowest 0. Numeric variables whose lowest value is 0 (0/1 indicators
+#' or event counts) are kept as they are.
+#'
+#' @param x The event variable.
+#' @param name Name of the variable (for error messages).
+#' @noRd
+recode_event <- function(x, name) {
+  v <- sort(unique(x))
+  if (is.numeric(x)) {
+    if (length(v) == 2 && v[1] != 0) {
+      return(as.integer(x == v[2]))
+    }
+    return(x)
+  }
+  if (length(v) == 2) {
+    return(as.integer(as.character(x) == as.character(v[2])))
+  }
+  stop("Event variable '", name, "' must be numeric (0/1 or event counts) or binary.")
 }
 
 
@@ -88,9 +128,10 @@ strate <- function(data, event, time, strata = NULL, per = 1000, conf.level = 0.
   }
   n_all <- nrow(data)
   data_raw <- data
-  # Check missing exposure
-  if (any(is.na(data[strata]))) {
-    warning("Missing data detected in strata, ", sum(is.na(data[[strata]]))," rows with missing strata dropped")
+  # Check missing strata (one or more variables)
+  if (!is.null(strata) && anyNA(data[strata])) {
+    n_miss_strata <- sum(!complete.cases(data[strata]))
+    warning("Missing data detected in strata, ", n_miss_strata, " rows with missing strata dropped")
     data <- data[complete.cases(data[strata]), ]
   }
   # Check missing outcome
@@ -98,10 +139,18 @@ strate <- function(data, event, time, strata = NULL, per = 1000, conf.level = 0.
     warning("Missing data detected in outcome, ", sum(is.na(data[[event]]))," rows with missing outcome dropped")
     data <- data[complete.cases(data[event]), ]
   }
-  n_non_missing <- nrow(data)
-  if (any(is.na(data_raw[event])) & any(is.na(data_raw[strata]))) {
-    warning("Total of ", n_all - n_non_missing," rows were dropped due to missing in outcome or strata")
+  # Check missing person-time
+  if (any(is.na(data[time]))) {
+    warning("Missing data detected in person-time, ", sum(is.na(data[[time]]))," rows with missing person-time dropped")
+    data <- data[complete.cases(data[time]), ]
   }
+  n_non_missing <- nrow(data)
+  if (sum(c(anyNA(data_raw[[event]]), anyNA(data_raw[[time]]),
+            !is.null(strata) && anyNA(data_raw[strata]))) > 1) {
+    warning("Total of ", n_all - n_non_missing," rows were dropped due to missing in outcome, person-time or strata")
+  }
+  # Binary event not coded 0/1 (e.g. 1/2) is recoded to 0/1
+  data[[event]] <- recode_event(data[[event]], event)
   alpha <- 1 - conf.level
   z <- qnorm(1 - alpha/2)
 
@@ -144,10 +193,7 @@ strate <- function(data, event, time, strata = NULL, per = 1000, conf.level = 0.
   }
   cat("Confidence level:", conf.level * 100, "%\n")
   cat("Rate per:", format(per, big.mark = ","), "\n")
-  if (any(is.na(data_raw[event])) | any(is.na(data_raw[strata]))) {
-    cat("Missing data (strata and/or outcome)", n_all - n_non_missing, "rows (",
-        round((n_all - n_non_missing)/n_all,2),"%)")
-  }
+  cat_missing(n_all, n_non_missing, "strata, outcome and/or person-time")
   cat("\n")
 
   # Prepare output table
@@ -196,6 +242,9 @@ strate <- function(data, event, time, strata = NULL, per = 1000, conf.level = 0.
 
   invisible(return_df)
 }
+
+
+#' Mantel-Haenszel Odds Ratio
 #'
 #' Calculates the Mantel-Haenszel odds ratio for case-control data. For binary
 #' exposures, computes crude or stratified odds ratios with optional pooling.
@@ -251,8 +300,8 @@ strate <- function(data, event, time, strata = NULL, per = 1000, conf.level = 0.
 #' is performed. The odds ratio represents the change in odds per one-unit
 #' increase in the exposure variable.
 #'
-#' The confidence interval uses the Robins-Breslow-Greenland variance formula
-#' for binary exposures, which matches output from Stata.
+#' The confidence interval uses the Clayton & Hills error factor
+#' (\code{exp(z * sqrt(V / (Q * R)))}), as in Stata's \code{mhodds} command.
 #'
 #' @seealso \code{\link{stmh_r}} for stratified rate ratios,
 #'   \code{\link{mh_analysis}} for a unified interface.
@@ -439,10 +488,7 @@ mh_or <- function(data, exposure, outcome, strata_vars = NULL, conf.level = 0.95
     cat("Stratified by:", paste(strata_vars, collapse = ", "), "\n")
   }
   cat("Confidence level:", conf.level * 100, "%\n")
-  if (any(is.na(data_raw[outcome])) | any(is.na(data_raw[exposure]))) {
-    cat("Missing data (treatment and/or outcome)", n_all - n_non_missing, "rows (",
-        round((n_all - n_non_missing)/n_all,2),"%)")
-  }
+  cat_missing(n_all, n_non_missing, "exposure and/or outcome")
   cat("\n")
 
 
@@ -660,10 +706,7 @@ mh_or_trend <- function(data,data_raw, exposure, outcome, strata_vars = NULL, co
     cat("Stratified by:", paste(strata_vars, collapse = ", "), "\n")
   }
   cat("Confidence level:", conf.level * 100, "%\n")
-  if (any(is.na(data_raw[outcome])) | any(is.na(data_raw[exposure]))) {
-    cat("Missing data (treatment and/or outcome)", nrow(data_raw) - nrow(data), "rows (",
-        round((nrow(data_raw) - nrow(data))/nrow(data_raw),2),"%)")
-  }
+  cat_missing(nrow(data_raw), nrow(data), "exposure and/or outcome")
   cat("\n")
 
   cat("=== Exposure-Specific Frequencies ===\n\n")
@@ -751,9 +794,11 @@ mh_or_trend <- function(data,data_raw, exposure, outcome, strata_vars = NULL, co
 #' @param data A data frame containing the variables for analysis.
 #' @param event Character string specifying the name of the event/case count variable.
 #'   Should contain numeric values representing the number of events (typically 0 or 1
-#'   for individual-level data, or counts for aggregated data).
+#'   for individual-level data, or counts for aggregated data). A binary event
+#'   coded otherwise (e.g. 1/2) is recoded to 0/1, with the highest value as the event.
 #' @param exposure Character string specifying the name of the exposure variable.
-#'   Should be a binary variable coded as 0 (unexposed) and 1 (exposed).
+#'   Binary (the higher value, or the level that is not \code{exp_ref}, is treated
+#'   as exposed) or multi-level numeric (trend test).
 #' @param time Character string specifying the name of the person-time variable.
 #'   Should contain numeric values representing the follow-up time (e.g., person-years).
 #' @param strata Character string or vector specifying the stratification variable(s).
@@ -773,9 +818,10 @@ mh_or_trend <- function(data,data_raw, exposure, outcome, strata_vars = NULL, co
 #' }
 #'
 #' @details
-#' The function assumes that the exposure variable is coded as 0 (unexposed) and
-#' 1 (exposed). Events and person-time are aggregated within each stratum-exposure
-#' combination.
+#' The exposure is recoded internally to 1 (exposed) and 0 (unexposed). Events
+#' and person-time are aggregated within each stratum-exposure combination.
+#' Rows with missing exposure, event or person-time are dropped. Multiple
+#' stratification variables are combined with \code{\link[base]{interaction}}.
 #'
 #' The pooled rate ratio is calculated using the Mantel-Haenszel method, and the
 #' variance is estimated using the Greenland-Robins formula. When stratification
@@ -827,14 +873,26 @@ stmh_r <- function(data, event, exposure, time, strata = NULL, conf.level = 0.95
     warning("Missing data detected in outcome, ", sum(is.na(data[[event]]))," rows with missing outcome dropped")
     data <- data[complete.cases(data[event]), ]
   }
+  # Check missing person-time
+  if (any(is.na(data[time]))) {
+    warning("Missing data detected in person-time, ", sum(is.na(data[[time]]))," rows with missing person-time dropped")
+    data <- data[complete.cases(data[time]), ]
+  }
   n_non_missing <- nrow(data)
-  if (any(is.na(data_raw[event])) & any(is.na(data_raw[exposure]))) {
-    warning("Total of ", n_all - n_non_missing," rows were dropped due to missing in outcome or exposure")
+  if (sum(c(anyNA(data_raw[[event]]), anyNA(data_raw[[exposure]]), anyNA(data_raw[[time]]))) > 1) {
+    warning("Total of ", n_all - n_non_missing," rows were dropped due to missing in outcome, exposure or person-time")
   }
   alpha <- 1 - conf.level
   z <- qnorm(1 - alpha/2)
 
- # Determine if exposure is binary or multi-level
+  # Detect event coding: a binary event not coded 0/1 is recoded to 0/1
+  # (highest value = event); otherwise the event is used as a count
+  event_values <- sort(unique(data[[event]]))
+  event_yes <- event_values[length(event_values)]
+  event_no  <- event_values[1]
+  data[[event]] <- recode_event(data[[event]], event)
+
+  # Determine if exposure is binary or multi-level
   exp_values <- sort(unique(data[[exposure]]))
   n_levels <- length(exp_values)
 
@@ -857,12 +915,6 @@ stmh_r <- function(data, event, exposure, time, strata = NULL, conf.level = 0.95
     return(stmh_r_trend(data,data_raw, event, exposure, time, strata, conf.level, verbose))
   }
 
-  # Detect event coding
-
-  event_values <- sort(unique(data[[event]]))
-  event_yes <- event_values[length(event_values)]  # highest value = event
-  event_no <- event_values[1]                       # lowest value = no event
-
   # Binary exposure: check if coded as 0/1
   exp_levels <- sort(exp_values)
   # Store original labels before recoding
@@ -883,47 +935,34 @@ stmh_r <- function(data, event, exposure, time, strata = NULL, conf.level = 0.95
   # Print variable coding
   cat("Variable coding detected:\n")
   cat("  Exposure:", exposure, "-> Exposed =", exp_yes, ", Unexposed =", exp_no, "\n")
-  cat("  Event:", event, "-> Event =", event_yes, ", No event =", event_no, "\n\n")
-
-  # If no strata, create a dummy stratum
-  if (is.null(strata)) {
-    data$.stratum <- "Overall"
-    strata_var <- ".stratum"
+  if (length(event_values) == 2) {
+    cat("  Event:", event, "-> Event =", event_yes, ", No event =", event_no, "\n\n")
   } else {
-    strata_var <- strata
+    cat("  Event:", event, "-> used as event counts\n\n")
   }
 
-  # Aggregate by stratum and exposure
+  # If no strata, create a dummy stratum; multiple strata variables are combined
+  if (is.null(strata)) {
+    data$.stratum <- "Overall"
+  } else {
+    data$.stratum <- interaction(data[, strata, drop = FALSE], drop = TRUE)
+  }
+
+  # Aggregate events and person-time by stratum and exposure (1 = exposed,
+  # 0 = unexposed). A stratum without one exposure group gets 0 events / 0 time.
   agg <- data |>
-    group_by(across(all_of(c(strata_var, exposure)))) |>
+    group_by(stratum = .data$.stratum) |>
     summarise(
-      events = sum(.data[[event]], na.rm = TRUE),
-      pyears = sum(.data[[time]], na.rm = TRUE),
+      d1  = sum(.data[[event]][.data[[exposure]] == 1]),
+      py1 = sum(.data[[time]][.data[[exposure]] == 1]),
+      d0  = sum(.data[[event]][.data[[exposure]] == 0]),
+      py0 = sum(.data[[time]][.data[[exposure]] == 0]),
       .groups = "drop"
-    ) |>
-    pivot_wider(
-      names_from = all_of(exposure),
-      values_from = c(events, pyears),
-      names_glue = "{.value}_{.name}"
-    )
-
-  # Rename columns (assuming exposure coded 1/0)
-  names(agg) <- c("stratum", "d0", "d1", "py0", "py1")
-
-  agg <- agg |>
-    select(stratum, d1, py1, d0, py0)
-
-  #Fix problem when strata has missing only in one category of exposure
-  #assign 0 events and 0 py to the other category
-
-  agg <- agg |>
-    mutate(
-      across(c(d1,py1,d0,py0),\(x) if_else(is.na(x),0,x))
     )
 
   # Warn about zero cells
   if (any(agg$d1 == 0) | any(agg$d0 == 0)) {
-    warning("Zero events in some strata. CIs may be unreliable. \n Not possible to calculate homogeneity test")
+    warning("Zero events in some strata. Stratum-specific CIs may be unreliable.")
   }
 
   # Stratum-specific estimates
@@ -961,13 +1000,10 @@ stmh_r <- function(data, event, exposure, time, strata = NULL, conf.level = 0.95
   cat("Exposure:", exposure, "\n")
   cat("  comparing", exposure, "=", exp_yes, "vs.", exposure, "=", exp_no, "\n")
   if (!is.null(strata)) {
-    cat("Stratified by:", strata, "\n")
+    cat("Stratified by:", paste(strata, collapse = ", "), "\n")
   }
   cat("Confidence level:", conf.level * 100, "%\n")
-  if (any(is.na(data_raw[event])) | any(is.na(data_raw[exposure]))) {
-    cat("Missing data (treatment and/or outcome)", n_all - n_non_missing, "rows (",
-        round((n_all - n_non_missing)/n_all,2),"%)")
-  }
+  cat_missing(n_all, n_non_missing, "exposure, outcome and/or person-time")
   cat("\n")
 
   # Calculate overall rates by exposure (for display)
@@ -1037,10 +1073,22 @@ stmh_r <- function(data, event, exposure, time, strata = NULL, conf.level = 0.95
     Q_total <- sum(q_i)  # This equals 'num' computed above
     R_total <- sum(r_i)  # This equals 'den' computed above
 
+    # Only informative strata (v_i > 0: events and person-time in both
+    # exposure groups' margins) contribute to the homogeneity test
+    informative <- !is.na(v_i) & v_i > 0
+    n_informative <- sum(informative)
+    cat("Note:", n_informative, "of", nrow(agg), "strata contribute information\n\n")
+
     # Homogeneity Q statistic (Breslow-Day type test)
-    Q <- sum((q_i * R_total - r_i * Q_total)^2 / (Q_total * R_total * v_i))
-    df_q <- nrow(agg) - 1
-    p_homog <- pchisq(Q, df = df_q, lower.tail = FALSE)
+    if (n_informative > 1) {
+      Q <- sum(((q_i * R_total - r_i * Q_total)^2 / (Q_total * R_total * v_i))[informative])
+      df_q <- n_informative - 1
+      p_homog <- pchisq(Q, df = df_q, lower.tail = FALSE)
+    } else {
+      Q <- NA
+      df_q <- NA
+      p_homog <- NA
+    }
 
   } else {
     cat("=== Crude Rate Ratio ===\n\n")
@@ -1050,7 +1098,7 @@ stmh_r <- function(data, event, exposure, time, strata = NULL, conf.level = 0.95
   }
 
   cat("IRR:", round(rr_mh, 4), "\n")
-  cat("95% CI:", round(ci_mh_lower, 4), "-", round(ci_mh_upper, 4), "\n")
+  cat(conf.level * 100, "% CI: ", round(ci_mh_lower, 4), " - ", round(ci_mh_upper, 4), "\n", sep = "")
   cat("SE(ln IRR):", round(se_mh, 4), "\n")
 
   # MH Chi-squared test for association (score test) - matches Stata
@@ -1068,10 +1116,12 @@ stmh_r <- function(data, event, exposure, time, strata = NULL, conf.level = 0.95
   cat("p-value:", format_pvalue(p_chi2), "\n")
 
   # Homogeneity test (only if stratified)
-  if (!is.null(strata)) {
+  if (!is.null(strata) && !is.na(Q)) {
     cat("\n=== Test of Homogeneity ===\n\n")
     cat("Q statistic:", round(Q, 3), "(df =", df_q, ")\n")
     cat("p-value:", format_pvalue(p_homog), "\n")
+  } else if (!is.null(strata)) {
+    cat("\nNote: Too few informative strata to test for homogeneity.\n")
   }
 
   # Return results
@@ -1214,10 +1264,7 @@ stmh_r_trend <- function(data,data_raw, event, exposure, time, strata = NULL, co
     cat("Stratified by:", paste(strata, collapse = ", "), "\n")
   }
   cat("Confidence level:", conf.level * 100, "%\n")
-  if (any(is.na(data_raw[event])) | any(is.na(data_raw[exposure]))) {
-    cat("Missing data (treatment and/or outcome)", nrow(data_raw) - nrow(data), "rows (",
-        round((nrow(data_raw) - nrow(data))/nrow(data_raw),2),"%)")
-  }
+  cat_missing(nrow(data_raw), nrow(data), "exposure, outcome and/or person-time")
   cat("\n")
 
   cat("=== Exposure-Specific Rates ===\n\n")
@@ -1385,9 +1432,10 @@ mh_single <- function(data, exposure, outcome, time, strata, measure,
 #'   a score test for trend is performed instead (exposure must be numeric).
 #' @param conf.level Numeric value between 0 and 1 specifying the confidence level.
 #'   Default is 0.95 (95% CI).
-#' @param verbose Logical. If \code{TRUE} (the default), displays stratum-specific
-#'   estimates when stratification is used. If \code{FALSE}, only shows the pooled
-#'   estimate and summary statistics.
+#' @param verbose Logical. If \code{TRUE} (the default), the full output is printed
+#'   while the analysis runs. If \code{FALSE}, nothing is printed (warnings are
+#'   still shown); the full output is stored in the returned object and can be
+#'   displayed later with \code{print()}.
 #'
 #' @return Invisibly returns an object of class \code{"mh_analysis"}. For a binary
 #'   exposure (or \code{trend = TRUE}) it contains:
@@ -1486,15 +1534,16 @@ mh_analysis <- function(data,
 
   measure <- match.arg(measure)
 
-  # Capture everything printed during the analysis so that printing the
-  # returned object reproduces exactly the same output
+  # Capture the full output of the analysis (always including stratum-specific
+  # tables) so that printing the returned object reproduces it
   output <- utils::capture.output(
     out <- mh_analysis_impl(data, exposure, outcome, time, strata, measure,
-                            reference, trend, conf.level, verbose)
+                            reference, trend, conf.level, verbose = TRUE)
   )
   out$output <- output
   out$call <- match.call()
-  print(out)
+  # Only show the output while running when verbose = TRUE
+  if (verbose) print(out)
   invisible(out)
 }
 
@@ -1655,4 +1704,45 @@ print.mh_analysis <- function(x, ...) {
   }
 
   invisible(x)
+}
+
+#' Summary Method for mh_analysis Objects
+#'
+#' Prints only the summary of a Mantel-Haenszel analysis. For an exposure with
+#' more than 2 levels, this is the table of each level vs. the reference level.
+#' For a binary exposure (or a trend test), it is the pooled estimate, its
+#' confidence interval and the homogeneity test.
+#'
+#' @param object An object of class \code{"mh_analysis"}, typically returned by
+#'   \code{\link{mh_analysis}}.
+#' @param ... Additional arguments (currently unused).
+#'
+#' @return Invisibly returns the input object \code{object}.
+#'
+#' @seealso \code{\link{mh_analysis}}, \code{\link{print.mh_analysis}}.
+#'
+#' @examples
+#' data(lung_cancer_cc)
+#'
+#' result <- mh_analysis(lung_cancer_cc, exposure = "age_group", outcome = "case",
+#'                       measure = "or", verbose = FALSE)
+#' summary(result)
+#'
+#' @export
+summary.mh_analysis <- function(object, ...) {
+  if (identical(object$type, "multilevel")) {
+    print_mh_multilevel(object)
+  } else {
+    # Short summary: print without the stored full output
+    x <- object
+    x$output <- NULL
+    print(x)
+    # Score test for trend
+    if (identical(object$type, "trend")) {
+      cat("\nScore test for trend\n")
+      cat("Chi2(1):", round(object$chi2, 4), "\n")
+      cat("p-value:", format_pvalue(object$chi2_p), "\n")
+    }
+  }
+  invisible(object)
 }
