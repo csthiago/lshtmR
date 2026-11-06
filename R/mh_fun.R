@@ -271,7 +271,8 @@ strate <- function(data, event, time, strata = NULL, per = 1000, conf.level = 0.
 #' result$estimate
 #'
 #' @keywords internal
-mh_or <- function(data, exposure, outcome, strata_vars = NULL, conf.level = 0.95, verbose = TRUE) {
+mh_or <- function(data, exposure, outcome, strata_vars = NULL, conf.level = 0.95, verbose = TRUE,
+                  exp_ref = NULL) {
 
   # Check required variables exist
   required_vars <- c(exposure, outcome)
@@ -335,8 +336,16 @@ mh_or <- function(data, exposure, outcome, strata_vars = NULL, conf.level = 0.95
     data$strata <- interaction(data[, strata_vars], drop = TRUE)
   }
 
-  exp_yes <- exp_levels[2]
-  exp_no  <- exp_levels[1]
+  if (!is.null(exp_ref)) {
+    # Reference (unexposed) level chosen explicitly
+    exp_no  <- exp_ref
+    exp_yes <- setdiff(as.character(exp_levels), as.character(exp_ref))
+  } else {
+    exp_yes <- exp_levels[2]
+    exp_no  <- exp_levels[1]
+  }
+  if (is.factor(exp_yes)) exp_yes <- as.character(exp_yes)
+  if (is.factor(exp_no))  exp_no  <- as.character(exp_no)
   out_yes <- out_levels[2]
   out_no  <- out_levels[1]
 
@@ -795,7 +804,8 @@ mh_or_trend <- function(data,data_raw, exposure, outcome, strata_vars = NULL, co
 #' strat_result$estimate
 #'
 #' @keywords internal
-stmh_r <- function(data, event, exposure, time, strata = NULL, conf.level = 0.95, verbose = TRUE) {
+stmh_r <- function(data, event, exposure, time, strata = NULL, conf.level = 0.95, verbose = TRUE,
+                   exp_ref = NULL) {
 
   # Check required variables exist
   required_vars <- c(event, exposure, time)
@@ -855,13 +865,20 @@ stmh_r <- function(data, event, exposure, time, strata = NULL, conf.level = 0.95
 
   # Binary exposure: check if coded as 0/1
   exp_levels <- sort(exp_values)
-  exp_yes <- exp_levels[2]  # Store original labels before recoding
- exp_no <- exp_levels[1]
-
-  if (!all(exp_values %in% c(0, 1))) {
-    # Convert to 0/1
-    data[[exposure]] <- as.integer(data[[exposure]] == exp_levels[2])
+  # Store original labels before recoding
+  if (!is.null(exp_ref)) {
+    # Reference (unexposed) level chosen explicitly
+    exp_no  <- exp_ref
+    exp_yes <- setdiff(as.character(exp_levels), as.character(exp_ref))
+  } else {
+    exp_yes <- exp_levels[2]
+    exp_no  <- exp_levels[1]
   }
+  if (is.factor(exp_yes)) exp_yes <- as.character(exp_yes)
+  if (is.factor(exp_no))  exp_no  <- as.character(exp_no)
+
+  # Always recode to 0/1 (1 = exposed, 0 = reference)
+  data[[exposure]] <- as.integer(as.character(data[[exposure]]) == as.character(exp_yes))
 
   # Print variable coding
   cat("Variable coding detected:\n")
@@ -1285,6 +1302,63 @@ stmh_r_trend <- function(data,data_raw, event, exposure, time, strata = NULL, co
 }
 
 
+#' Run a single (binary or trend) Mantel-Haenszel analysis (internal)
+#'
+#' Calls \code{\link{mh_or}} or \code{\link{stmh_r}} and standardises the output.
+#'
+#' @inheritParams mh_analysis
+#' @param exp_ref Reference (unexposed) level of the exposure, or \code{NULL}
+#'   to use the lowest value.
+#' @return An object of class \code{"mh_analysis"}.
+#' @keywords internal
+mh_single <- function(data, exposure, outcome, time, strata, measure,
+                      conf.level, verbose, exp_ref = NULL) {
+  if (measure == "or") {
+    result <- mh_or(data, exposure, outcome, strata_vars = strata,
+                    conf.level = conf.level, verbose = verbose, exp_ref = exp_ref)
+    out <- list(
+      measure = "Odds Ratio",
+      estimate = result$OR_MH,
+      ci = c(result$CI_lower, result$CI_upper),
+      se_ln = result$se_ln_or,
+      test_stat = result$homogeneity_Q,
+      test_name = "Homogeneity Q",
+      test_df = result$homogeneity_df,
+      p_value = result$homogeneity_p,
+      chi2 = result$chi2,
+      chi2_p = result$p_value,
+      conf.level = conf.level,
+      strata_data = result$strata_data,
+      n_strata = result$n_total_strata,
+      n_informative = result$n_informative,
+      stratified = !is.null(strata)
+    )
+  } else {
+    result <- stmh_r(data, event = outcome, exposure = exposure, time = time,
+                     strata = strata, conf.level = conf.level, verbose = verbose,
+                     exp_ref = exp_ref)
+    out <- list(
+      measure = "Incidence Rate Ratio",
+      estimate = result$irr,
+      ci = result$ci,
+      se_ln = result$se,
+      test_stat = result$homogeneity_Q,
+      test_name = "Homogeneity Q",
+      test_df = result$homogeneity_df,
+      p_value = result$homogeneity_p,
+      chi2 = if (!is.null(result$chi2)) result$chi2 else result$chi2_trend,
+      chi2_p = if (!is.null(result$chi2_p)) result$chi2_p else result$p_trend,
+      conf.level = conf.level,
+      strata_data = if (!is.null(result$strata)) result$strata else result$strata_data,
+      stratified = !is.null(strata)
+    )
+  }
+  out$type <- if (!is.null(result$type)) result$type else "binary"
+  class(out) <- "mh_analysis"
+  out
+}
+
+
 #' Mantel-Haenszel Analysis
 #'
 #' A unified interface for performing Mantel-Haenszel stratified analyses,
@@ -1304,13 +1378,19 @@ stmh_r_trend <- function(data,data_raw, event, exposure, time, strata = NULL, co
 #'   Optional for both measures (crude analysis if not provided).
 #' @param measure Character string specifying the type of analysis: \code{"or"} for
 #'   odds ratio (default) or \code{"irr"} for incidence rate ratio.
+#' @param reference Value of the exposure to use as the reference (unexposed)
+#'   level. Defaults to the lowest value (or first factor level).
+#' @param trend Logical. For exposures with more than 2 levels: if \code{FALSE}
+#'   (the default) each level is compared with \code{reference}; if \code{TRUE}
+#'   a score test for trend is performed instead (exposure must be numeric).
 #' @param conf.level Numeric value between 0 and 1 specifying the confidence level.
 #'   Default is 0.95 (95% CI).
 #' @param verbose Logical. If \code{TRUE} (the default), displays stratum-specific
 #'   estimates when stratification is used. If \code{FALSE}, only shows the pooled
 #'   estimate and summary statistics.
 #'
-#' @return Invisibly returns an object of class \code{"mh_analysis"} containing:
+#' @return Invisibly returns an object of class \code{"mh_analysis"}. For a binary
+#'   exposure (or \code{trend = TRUE}) it contains:
 #' \describe{
 #'   \item{measure}{Character string describing the measure type.}
 #'   \item{estimate}{The pooled Mantel-Haenszel estimate.}
@@ -1324,6 +1404,19 @@ stmh_r_trend <- function(data,data_raw, event, exposure, time, strata = NULL, co
 #'   \item{chi2_p}{P-value for the association test.}
 #'   \item{conf.level}{The confidence level used.}
 #'   \item{strata_data}{Data frame with stratum-specific results.}
+#'   \item{type}{\code{"binary"} or \code{"trend"}.}
+#'   \item{call}{The matched function call.}
+#' }
+#' For an exposure with more than 2 levels (and \code{trend = FALSE}) it contains:
+#' \describe{
+#'   \item{measure}{Character string describing the measure type.}
+#'   \item{type}{\code{"multilevel"}.}
+#'   \item{reference}{The reference level used.}
+#'   \item{estimate}{Named vector of estimates, one per non-reference level.}
+#'   \item{comparisons}{Data frame with one row per level vs. reference:
+#'     estimate, CI, SE(ln), chi2 test of association and homogeneity test.}
+#'   \item{results}{Named list with the full \code{"mh_analysis"} result of each comparison.}
+#'   \item{conf.level}{The confidence level used.}
 #'   \item{call}{The matched function call.}
 #' }
 #'
@@ -1332,6 +1425,12 @@ stmh_r_trend <- function(data,data_raw, event, exposure, time, strata = NULL, co
 #' \code{\link{stmh_r}}, providing a unified interface for both types of analysis.
 #' The output is returned as an S3 object with a custom print method for clean
 #' display.
+#'
+#' When the exposure has more than 2 levels, each non-reference level is
+#' compared with the reference level (as Stata's \code{mhodds ..., c(k, ref)} or
+#' \code{stmh ..., c(k, ref)}): the data are restricted to the two levels being
+#' compared and a binary Mantel-Haenszel analysis is run. Use \code{trend = TRUE}
+#' to perform the score test for trend instead.
 #'
 #' For odds ratio analysis (\code{measure = "or"}):
 #' \itemize{
@@ -1361,6 +1460,11 @@ stmh_r_trend <- function(data,data_raw, event, exposure, time, strata = NULL, co
 #'                          strata = "age_group", measure = "or")
 #' print(or_result)
 #'
+#' # Multi-level exposure: each age group vs. the reference "40-54"
+#' age_result <- mh_analysis(lung_cancer_cc, exposure = "age_group", outcome = "case",
+#'                           strata = "sex", measure = "or", verbose = FALSE)
+#' age_result$comparisons
+#'
 #' # Example for rate ratio analysis using mortality cohort data
 #' data(mortality_cohort)
 #'
@@ -1375,87 +1479,129 @@ mh_analysis <- function(data,
                         time = NULL,
                         strata = NULL,
                         measure = c("or", "irr"),
+                        reference = NULL,
+                        trend = FALSE,
                         conf.level = 0.95,
                         verbose = TRUE) {
 
   measure <- match.arg(measure)
 
+  # Capture everything printed during the analysis so that printing the
+  # returned object reproduces exactly the same output
+  output <- utils::capture.output(
+    out <- mh_analysis_impl(data, exposure, outcome, time, strata, measure,
+                            reference, trend, conf.level, verbose)
+  )
+  out$output <- output
+  out$call <- match.call()
+  print(out)
+  invisible(out)
+}
 
-  # Validate inputs based on measure type
-  if (measure == "or") {
+#' @noRd
+mh_analysis_impl <- function(data, exposure, outcome, time, strata, measure,
+                             reference, trend, conf.level, verbose) {
 
-    if (!is.null(time)) {
-      warning("'time' is ignored for odds ratio analysis")
-    }
-
-    # Call mh_or function
-    result <- mh_or(
-      data = data,
-      exposure = exposure,
-      outcome = outcome,
-      strata_vars = strata,
-      conf.level = conf.level,
-      verbose = verbose
-    )
-
-    # Standardise output
-    out <- list(
-      measure = "Odds Ratio",
-      estimate = result$OR_MH,
-      ci = c(result$CI_lower, result$CI_upper),
-      se_ln = result$se_ln_or,
-      test_stat = result$homogeneity_Q,
-      test_name = "Homogeneity Q",
-      test_df = result$homogeneity_df,
-      p_value = result$homogeneity_p,
-      chi2 = result$chi2,
-      chi2_p = result$p_value,
-      conf.level = conf.level,
-      strata_data = result$strata_data,
-      n_strata = result$n_total_strata,
-      n_informative = result$n_informative,
-      stratified = !is.null(strata),
-      call = match.call()
-    )
-
-  } else if (measure == "irr") {
-
-    if (is.null(time)) {
-      stop("'time' must be specified for rate ratio (measure = 'irr')")
-    }
-
-    # Call stmh_r function (outcome is the event variable for IRR)
-    result <- stmh_r(
-      data = data,
-      event = outcome,
-      exposure = exposure,
-      time = time,
-      strata = strata,
-      conf.level = conf.level,
-      verbose = verbose
-    )
-
-    # Standardise output
-    out <- list(
-      measure = "Incidence Rate Ratio",
-      estimate = result$irr,
-      ci = result$ci,
-      se_ln = result$se,
-      test_stat = result$homogeneity_Q,
-      test_name = "Homogeneity Q",
-      test_df = result$homogeneity_df,
-      p_value = result$homogeneity_p,
-      chi2 = result$chi2,
-      chi2_p = result$chi2_p,
-      conf.level = conf.level,
-      strata_data = result$strata,
-      stratified = !is.null(strata),
-      call = match.call()
-    )
+  if (measure == "or" && !is.null(time)) {
+    warning("'time' is ignored for odds ratio analysis")
+  }
+  if (measure == "irr" && is.null(time)) {
+    stop("'time' must be specified for rate ratio (measure = 'irr')")
+  }
+  if (!all(c(exposure, outcome) %in% names(data))) {
+    stop("One or more variables not found in data")
   }
 
-  class(out) <- "mh_analysis"
-  invisible(out)
+  # Exposure levels among rows with non-missing exposure and outcome
+  x  <- data[[exposure]]
+  ok <- !is.na(x) & !is.na(data[[outcome]])
+  exp_lv <- if (is.factor(x)) levels(droplevels(x[ok])) else sort(unique(x[ok]))
+
+  if (!is.null(reference) && !(as.character(reference) %in% as.character(exp_lv))) {
+    stop("'reference' (", reference, ") is not a level of '", exposure, "'")
+  }
+
+  # ---- Multi-level exposure: each level vs reference ----
+  if (length(exp_lv) > 2 && !trend) {
+    if (any(!ok)) {
+      warning(sum(!ok), " rows with missing exposure or outcome dropped")
+      data <- data[ok, ]
+    }
+    ref     <- if (is.null(reference)) as.character(exp_lv[1]) else as.character(reference)
+    comp_lv <- setdiff(as.character(exp_lv), ref)
+
+    results <- list()
+    for (lv in comp_lv) {
+      sub <- data[as.character(data[[exposure]]) %in% c(ref, lv), ]
+      sub[[exposure]] <- as.character(sub[[exposure]])
+      res_output <- utils::capture.output({
+        cat("\n\n#################################################\n")
+        cat("  ", exposure, "=", lv, "vs.", exposure, "=", ref, "(reference)\n")
+        cat("#################################################\n")
+        res <- mh_single(sub, exposure, outcome, time, strata, measure,
+                         conf.level, verbose, exp_ref = ref)
+      })
+      cat(res_output, sep = "\n")
+      res$output <- res_output   # print(results[[lv]]) shows this comparison
+      results[[lv]] <- res
+    }
+
+    comparisons <- data.frame(
+      level         = comp_lv,
+      reference     = ref,
+      estimate      = sapply(results, `[[`, "estimate"),
+      ci_lower      = sapply(results, \(r) r$ci[1]),
+      ci_upper      = sapply(results, \(r) r$ci[2]),
+      se_ln         = sapply(results, `[[`, "se_ln"),
+      chi2          = sapply(results, `[[`, "chi2"),
+      chi2_p        = sapply(results, `[[`, "chi2_p"),
+      homogeneity_Q = sapply(results, `[[`, "test_stat"),
+      homogeneity_p = sapply(results, `[[`, "p_value"),
+      row.names = NULL
+    )
+
+    out <- list(
+      measure = results[[1]]$measure,
+      type = "multilevel",
+      reference = ref,
+      estimate = stats::setNames(comparisons$estimate, comp_lv),
+      comparisons = comparisons,
+      results = results,
+      conf.level = conf.level,
+      stratified = !is.null(strata)
+    )
+    class(out) <- "mh_analysis"
+    print_mh_multilevel(out)
+    return(out)
+  }
+
+  # ---- Binary exposure, or trend test ----
+  mh_single(data, exposure, outcome, time, strata, measure, conf.level, verbose,
+            exp_ref = if (length(exp_lv) == 2) reference else NULL)
+}
+
+#' Summary table for a multi-level mh_analysis (internal)
+#' @noRd
+print_mh_multilevel <- function(x) {
+  cat("\n")
+  cat("Mantel-Haenszel", x$measure, "- each level vs. reference =", x$reference, "\n")
+  cat(rep("=", 55), "\n\n", sep = "")
+  tab  <- x$comparisons
+  disp <- data.frame(
+    Comparison = paste(tab$level, "vs", tab$reference),
+    Estimate   = round(tab$estimate, 4),
+    CI         = paste0(round(tab$ci_lower, 4), " - ", round(tab$ci_upper, 4)),
+    Chi2       = round(tab$chi2, 3),
+    `p-value`  = sapply(tab$chi2_p, format_pvalue),
+    check.names = FALSE
+  )
+  names(disp)[2] <- if (x$measure == "Odds Ratio") "OR" else "IRR"
+  names(disp)[3] <- paste0(x$conf.level * 100, "% CI")
+  if (isTRUE(x$stratified)) {
+    disp$`Homog. p` <- sapply(tab$homogeneity_p, format_pvalue)
+  }
+  print(disp, row.names = FALSE)
+  invisible(x)
 }
 
 #' Print Method for mh_analysis Objects
@@ -1481,6 +1627,16 @@ mh_analysis <- function(data,
 #'
 #' @export
 print.mh_analysis <- function(x, ...) {
+
+  # Replay the full output produced when the analysis was run
+  if (!is.null(x$output)) {
+    cat(x$output, sep = "\n")
+    return(invisible(x))
+  }
+
+  if (identical(x$type, "multilevel")) {
+    return(print_mh_multilevel(x))
+  }
 
   cat("\n")
   cat("Mantel-Haenszel", x$measure, "\n")

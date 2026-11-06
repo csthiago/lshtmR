@@ -11,7 +11,8 @@ stmh_r(
   time,
   strata = NULL,
   conf.level = 0.95,
-  verbose = TRUE
+  verbose = TRUE,
+  exp_ref = NULL
 )
 }
 \arguments{

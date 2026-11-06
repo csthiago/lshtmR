@@ -11,6 +11,8 @@ mh_analysis(
   time = NULL,
   strata = NULL,
   measure = c("or", "irr"),
+  reference = NULL,
+  trend = FALSE,
   conf.level = 0.95,
   verbose = TRUE
 )
@@ -36,6 +38,13 @@ Optional for both measures (crude analysis if not provided).}
 \item{measure}{Character string specifying the type of analysis: \code{"or"} for
 odds ratio (default) or \code{"irr"} for incidence rate ratio.}
 
+\item{reference}{Value of the exposure to use as the reference (unexposed)
+level. Defaults to the lowest value (or first factor level).}
+
+\item{trend}{Logical. For exposures with more than 2 levels: if \code{FALSE}
+(the default) each level is compared with \code{reference}; if \code{TRUE}
+a score test for trend is performed instead (exposure must be numeric).}
+
 \item{conf.level}{Numeric value between 0 and 1 specifying the confidence level.
 Default is 0.95 (95\% CI).}
 
@@ -44,7 +53,8 @@ estimates when stratification is used. If \code{FALSE}, only shows the pooled
 estimate and summary statistics.}
 }
 \value{
-Invisibly returns an object of class \code{"mh_analysis"} containing:
+Invisibly returns an object of class \code{"mh_analysis"}. For a binary
+exposure (or \code{trend = TRUE}) it contains:
 \describe{
 \item{measure}{Character string describing the measure type.}
 \item{estimate}{The pooled Mantel-Haenszel estimate.}
@@ -58,6 +68,19 @@ Invisibly returns an object of class \code{"mh_analysis"} containing:
 \item{chi2_p}{P-value for the association test.}
 \item{conf.level}{The confidence level used.}
 \item{strata_data}{Data frame with stratum-specific results.}
+\item{type}{\code{"binary"} or \code{"trend"}.}
+\item{call}{The matched function call.}
+}
+For an exposure with more than 2 levels (and \code{trend = FALSE}) it contains:
+\describe{
+\item{measure}{Character string describing the measure type.}
+\item{type}{\code{"multilevel"}.}
+\item{reference}{The reference level used.}
+\item{estimate}{Named vector of estimates, one per non-reference level.}
+\item{comparisons}{Data frame with one row per level vs. reference:
+estimate, CI, SE(ln), chi2 test of association and homogeneity test.}
+\item{results}{Named list with the full \code{"mh_analysis"} result of each comparison.}
+\item{conf.level}{The confidence level used.}
 \item{call}{The matched function call.}
 }
 }
@@ -70,6 +93,12 @@ This function serves as a wrapper around \code{\link{mh_or}} and
 \code{\link{stmh_r}}, providing a unified interface for both types of analysis.
 The output is returned as an S3 object with a custom print method for clean
 display.
+
+When the exposure has more than 2 levels, each non-reference level is
+compared with the reference level (as Stata's \code{mhodds ..., c(k, ref)} or
+\code{stmh ..., c(k, ref)}): the data are restricted to the two levels being
+compared and a binary Mantel-Haenszel analysis is run. Use \code{trend = TRUE}
+to perform the score test for trend instead.
 
 For odds ratio analysis (\code{measure = "or"}):
 \itemize{
@@ -94,6 +123,11 @@ data(lung_cancer_cc)
 or_result <- mh_analysis(lung_cancer_cc, exposure = "smoking", outcome = "case",
                          strata = "age_group", measure = "or")
 print(or_result)
+
+# Multi-level exposure: each age group vs. the reference "40-54"
+age_result <- mh_analysis(lung_cancer_cc, exposure = "age_group", outcome = "case",
+                          strata = "sex", measure = "or", verbose = FALSE)
+age_result$comparisons
 
 # Example for rate ratio analysis using mortality cohort data
 data(mortality_cohort)

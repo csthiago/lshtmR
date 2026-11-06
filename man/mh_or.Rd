@@ -13,7 +13,8 @@ mh_or(
   outcome,
   strata_vars = NULL,
   conf.level = 0.95,
-  verbose = TRUE
+  verbose = TRUE,
+  exp_ref = NULL
 )
 }
 \arguments{
