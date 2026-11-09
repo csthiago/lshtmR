@@ -128,6 +128,21 @@ r <- quiet(mh_analysis(lc, "age_group", "case", strata = "sex"))
 check("type is multilevel", identical(r$type, "multilevel"))
 check("reference defaults to first level", r$reference == "40-54")
 check("one comparison per non-reference level", nrow(r$comparisons) == 2)
+mh3 <- mantelhaen.test(table(lc$age_group, lc$case, lc$sex))
+check("overall chi2 (stratified) = mantelhaen.test", near(r$overall_chi2, unname(mh3$statistic)))
+check("overall chi2 df = levels - 1", r$overall_df == 2)
+r0 <- quiet(mh_analysis(lc, "age_group", "case"))
+pear <- suppressWarnings(chisq.test(table(lc$age_group, lc$case), correct = FALSE))$statistic
+check("overall chi2 (crude) = (N-1)/N * Pearson chi2", near(r0$overall_chi2, unname(pear) * (nrow(lc) - 1) / nrow(lc)))
+tb <- table(lc$age_group, lc$case)
+check("exposure table: cases/controls per level",
+      identical(r0$exposure_table$level, levels(lc$age_group)) &&
+      all(r0$exposure_table$cases == tb[, "1"]) && all(r0$exposure_table$controls == tb[, "0"]))
+check("exposure table: odds = cases/controls", near(r0$exposure_table$odds, tb[, "1"] / tb[, "0"]))
+check("exposure table printed in summary", any(grepl("40-54 \\(ref\\)", capture.output(summary(r0)))))
+check("overall chi2 shown in output and summary",
+      any(grepl("Overall Test of Association", r0$output)) &&
+      any(grepl("Overall Test of Association", capture.output(summary(r0)))))
 sub <- lc[lc$age_group %in% c("40-54", "70+"), ]; sub$x <- as.integer(sub$age_group == "70+")
 rb <- quiet(mh_analysis(sub, "x", "case", strata = "sex"))
 check("70+ vs 40-54 = binary analysis on subset", near(r$estimate[["70+"]], rb$estimate))

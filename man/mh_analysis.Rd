@@ -81,6 +81,11 @@ For an exposure with more than 2 levels (and \code{trend = FALSE}) it contains:
 \item{comparisons}{Data frame with one row per level vs. reference:
 estimate, CI, SE(ln), chi2 test of association and homogeneity test.}
 \item{results}{Named list with the full \code{"mh_analysis"} result of each comparison.}
+\item{overall_chi2, overall_df, overall_p}{Odds ratios only: overall
+(Mantel-Haenszel, generalised Cochran-Mantel-Haenszel) chi-squared test
+of association across all exposure levels, on K - 1 degrees of freedom.}
+\item{exposure_table}{Odds ratios only: data frame with the number of
+cases, controls, total, percentage of cases and odds for each exposure level.}
 \item{conf.level}{The confidence level used.}
 \item{call}{The matched function call.}
 }

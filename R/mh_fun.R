@@ -1464,6 +1464,11 @@ mh_single <- function(data, exposure, outcome, time, strata, measure,
 #'   \item{comparisons}{Data frame with one row per level vs. reference:
 #'     estimate, CI, SE(ln), chi2 test of association and homogeneity test.}
 #'   \item{results}{Named list with the full \code{"mh_analysis"} result of each comparison.}
+#'   \item{overall_chi2, overall_df, overall_p}{Odds ratios only: overall
+#'     (Mantel-Haenszel, generalised Cochran-Mantel-Haenszel) chi-squared test
+#'     of association across all exposure levels, on K - 1 degrees of freedom.}
+#'   \item{exposure_table}{Odds ratios only: data frame with the number of
+#'     cases, controls, total, percentage of cases and odds for each exposure level.}
 #'   \item{conf.level}{The confidence level used.}
 #'   \item{call}{The matched function call.}
 #' }
@@ -1619,6 +1624,32 @@ mh_analysis_impl <- function(data, exposure, outcome, time, strata, measure,
       conf.level = conf.level,
       stratified = !is.null(strata)
     )
+
+    # Overall test of association across all exposure levels (odds ratios)
+    if (measure == "or") {
+      overall <- mh_or_overall(data, exposure, outcome, strata)
+      out$overall_chi2 <- overall$chi2
+      out$overall_df   <- overall$df
+      out$overall_p    <- overall$p
+
+      # Cases and controls per exposure level (in the order of exp_lv)
+      y <- data[[outcome]]
+      out_lv  <- sort(unique(y))
+      is_case <- y == out_lv[length(out_lv)]
+      xl <- factor(as.character(data[[exposure]]), levels = as.character(exp_lv))
+      n_cases <- tabulate(xl[is_case], nlevels(xl))
+      n_total <- tabulate(xl, nlevels(xl))
+      out$exposure_table <- data.frame(
+        level     = levels(xl),
+        cases     = n_cases,
+        controls  = n_total - n_cases,
+        total     = n_total,
+        pct_cases = 100 * n_cases / n_total,
+        odds      = n_cases / (n_total - n_cases)
+      )
+      out$exposure <- exposure
+    }
+
     class(out) <- "mh_analysis"
     print_mh_multilevel(out)
     return(out)
@@ -1650,7 +1681,83 @@ print_mh_multilevel <- function(x) {
     disp$`Homog. p` <- sapply(tab$homogeneity_p, format_pvalue)
   }
   print(disp, row.names = FALSE)
+
+  if (!is.null(x$overall_chi2)) {
+    cat("\n=== Overall Test of Association ===\n\n")
+
+    if (!is.null(x$exposure_table)) {
+      et <- x$exposure_table
+      lv <- ifelse(et$level == x$reference, paste(et$level, "(ref)"), et$level)
+      freq <- data.frame(
+        level      = c(lv, "Total"),
+        Cases      = c(et$cases, sum(et$cases)),
+        Controls   = c(et$controls, sum(et$controls)),
+        Total      = c(et$total, sum(et$total)),
+        `% Cases`  = round(c(et$pct_cases, 100 * sum(et$cases) / sum(et$total)), 1),
+        Odds       = round(c(et$odds, sum(et$cases) / sum(et$controls)), 4),
+        check.names = FALSE
+      )
+      names(freq)[1] <- x$exposure
+      print(freq, row.names = FALSE)
+      cat("\n")
+    }
+
+    cat("(H0: odds equal in all ", x$overall_df + 1, " exposure levels",
+        if (isTRUE(x$stratified)) ", Mantel-Haenszel stratified)" else ")", "\n\n", sep = "")
+    cat("Chi2(", x$overall_df, "): ", round(x$overall_chi2, 4), "\n", sep = "")
+    cat("p-value:", format_pvalue(x$overall_p), "\n")
+  }
   invisible(x)
+}
+
+
+#' Overall Mantel-Haenszel chi-squared test for a multi-level exposure (internal)
+#'
+#' Generalised Cochran-Mantel-Haenszel test of association between a
+#' K-level exposure and a binary outcome, optionally stratified. Tests
+#' H0: the odds of being a case are equal in all exposure levels (within
+#' strata), on K - 1 degrees of freedom. Uses the same hypergeometric
+#' variance (with the N - 1 correction) as the binary Mantel-Haenszel
+#' chi-squared test, to which it reduces when K = 2. Matches
+#' \code{stats::mantelhaen.test} for stratified 2 x K tables.
+#'
+#' @param data Data frame without missing exposure/outcome.
+#' @param exposure,outcome,strata Variable names.
+#' @return List with \code{chi2}, \code{df} and \code{p}.
+#' @noRd
+mh_or_overall <- function(data, exposure, outcome, strata = NULL) {
+  y <- data[[outcome]]
+  out_lv <- sort(unique(y))
+  case <- as.integer(y == out_lv[length(out_lv)])
+  x <- factor(as.character(data[[exposure]]))
+  K <- nlevels(x)
+  s <- if (is.null(strata)) {
+    factor(rep("Overall", nrow(data)))
+  } else {
+    addNA(interaction(data[, strata, drop = FALSE], drop = TRUE), ifany = TRUE)
+  }
+
+  O <- E <- numeric(K)
+  V <- matrix(0, K, K)
+  for (h in split(seq_along(case), s)) {
+    n <- tabulate(x[h], K)                    # total by exposure level
+    d <- tabulate(x[h][case[h] == 1], K)      # cases by exposure level
+    N <- sum(n)
+    D <- sum(d)
+    if (N < 2) next
+    O <- O + d
+    E <- E + D * n / N
+    V <- V + D * (N - D) / (N^2 * (N - 1)) * (N * diag(n, K) - n %o% n)
+  }
+
+  # Drop one level (the covariance matrix has rank K - 1)
+  k <- seq_len(K - 1)
+  dev <- (O - E)[k]
+  chi2 <- tryCatch(
+    as.numeric(t(dev) %*% solve(V[k, k, drop = FALSE], dev)),
+    error = function(e) NA_real_
+  )
+  list(chi2 = chi2, df = K - 1, p = pchisq(chi2, df = K - 1, lower.tail = FALSE))
 }
 
 #' Print Method for mh_analysis Objects
